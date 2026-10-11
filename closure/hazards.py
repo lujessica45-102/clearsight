@@ -3,7 +3,6 @@
 Every alert carries provenance (source, retrieved_at, sent/effective/onset/expires) so the audit record can
 distinguish when something was issued, when it was retrieved, and when it was evaluated.
 """
-import json
 import threading
 import time
 from concurrent.futures import ThreadPoolExecutor
@@ -12,8 +11,7 @@ from datetime import datetime, timezone
 from shapely.geometry import shape, mapping
 from shapely.ops import unary_union
 
-from . import config
-from parser import nws_client  # team's existing NWS client (fetch_json / fetch_alerts / fetch_weather)
+from parser import nws_client, iem_client  # team's NWS client + the IEM archive client (as-of queries)
 
 # event -> (hazard_class, base_level). PROTOTYPE MAPPING anchored on the NWS product hierarchy
 # (Warning > Watch > Advisory > Statement) and the severity of the underlying hazard. Not official policy.
@@ -34,7 +32,9 @@ EVENT_TABLE = {
     "High Wind Warning": ("wind", 3), "High Wind Watch": ("wind", 2), "Wind Advisory": ("wind", 1),
     "Excessive Heat Warning": ("heat", 3), "Extreme Heat Warning": ("heat", 3), "Heat Advisory": ("heat", 2),
     "Dense Fog Advisory": ("fog", 1), "Dense Smoke Advisory": ("smoke", 1), "Air Quality Alert": ("smoke", 1),
-    "Red Flag Warning": ("fire", 2),
+    # fire weather: conditions warnings, NOT confirmation of an actual fire (NWS carries no evacuation orders / perimeters)
+    "Fire Weather Watch": ("fire", 2), "Red Flag Warning": ("fire", 3), "Fire Warning": ("fire", 4),
+    "Extreme Fire Danger": ("fire", 3),
 }
 # hazard classes that can plausibly block or endanger a commute (used for the employee-impact estimate)
 TRAVEL_IMPACT_CLASSES = {"tornado", "convective", "tropical", "surge", "flood", "winter", "wind"}
@@ -90,22 +90,16 @@ def in_effect(alert, as_of):
     return "active", 0.0
 
 
-# ---------------------------------------------------------------- live NWS
-_zone_cache, _zone_lock = {}, threading.Lock()
+# ---------------------------------------------------------------- as-of picture (live / recent / archive)
+MAX_REGIONAL_KM = 150
 _alert_cache = {}
 
 
 def _zone_geometry(url):
-    with _zone_lock:
-        if url in _zone_cache:
-            return _zone_cache[url]
     try:
-        g = nws_client.fetch_json(url).get("geometry")
+        return nws_client.fetch_zone_geometry(url)[0]
     except Exception:
-        g = None
-    with _zone_lock:
-        _zone_cache[url] = g
-    return g
+        return None
 
 
 def _resolve_geometry(props, feature_geometry):
@@ -122,7 +116,7 @@ def _resolve_geometry(props, feature_geometry):
     return mapping(unary_union(shapes).simplify(0.01)), "county_zone"
 
 
-def _normalize_live(feature, retrieved_at):
+def _normalize_feature(feature, retrieved_at, source, cached=False):
     p = feature.get("properties", {})
     geom, kind = _resolve_geometry(p, feature.get("geometry"))
     a = {
@@ -133,12 +127,9 @@ def _normalize_live(feature, retrieved_at):
         "sent": p.get("sent"), "effective": p.get("effective"), "onset": p.get("onset"),
         "expires": p.get("expires"), "ends": p.get("ends"), "sender": p.get("senderName"),
         "geometry": geom, "geometry_kind": kind,
-        "source": "NWS API api.weather.gov", "source_url": feature.get("id"), "retrieved_at": retrieved_at,
+        "source": source, "source_url": feature.get("id"), "retrieved_at": retrieved_at, "cached": cached,
     }
     return _finish(a)
-
-
-MAX_REGIONAL_KM = 150
 
 
 def _distance_km(alert, lat, lon):
@@ -148,112 +139,144 @@ def _distance_km(alert, lat, lon):
     return round(shape(alert["geometry"]).distance(Point(lon, lat)) * 111.0, 1)   # degrees -> km, approximate
 
 
-def live_picture(facility, horizon_hours=36):
-    """Real current NWS data for a facility. Failures are returned in `errors`, never papered over."""
-    now = _now()
-    retrieved = now.isoformat()
-    state = facility["state"]
-    errors, alerts, sources = [], [], []
-    lat, lon = facility["latitude"], facility["longitude"]
+def _wanted(event, description, severity):
+    cls, _ = classify(event, description, severity)
+    return not (cls == "other" and severity not in ("Extreme", "Severe"))
 
-    cache_key = (state,)
-    cached = _alert_cache.get(cache_key)
+
+def _live_alerts(facility, now, errors, sources):
+    state, lat, lon = facility["state"], facility["latitude"], facility["longitude"]
+    retrieved = now.isoformat()
+    cached = _alert_cache.get(state)
     if cached and time.time() - cached[0] < 120:
-        features, area_retrieved = cached[1], cached[2]
+        features = cached[1]
     else:
-        url = f"{nws_client.NWS_BASE_URL}/alerts/active"
         try:
-            data = nws_client.fetch_json(url, params={"area": state, "status": "actual"})
-            features, area_retrieved = data.get("features", []), retrieved
-            _alert_cache[cache_key] = (time.time(), features, area_retrieved)
+            data = nws_client.fetch_json(f"{nws_client.NWS_BASE_URL}/alerts/active", params={"area": state, "status": "actual"})
+            features = data.get("features", [])
+            _alert_cache[state] = (time.time(), features)
         except Exception as e:
-            features, area_retrieved = [], retrieved
+            features = []
             errors.append(f"NWS area alerts for {state} failed: {e}")
     sources.append(f"{nws_client.NWS_BASE_URL}/alerts/active?area={state}&status=actual")
-
-    point_ids = None
     try:
         point_ids = {a["id"] for a in nws_client.fetch_alerts(lat, lon)}
         sources.append(f"{nws_client.NWS_BASE_URL}/alerts/active?point={lat},{lon}")
     except Exception as e:
+        point_ids = None
         errors.append(f"NWS point alerts failed: {e}")
+    return features, point_ids, retrieved, "NWS API api.weather.gov", False
 
-    for f in features:
-        p = f.get("properties", {})
-        cls, _ = classify(p.get("event"), p.get("description"), p.get("severity"))
-        if cls == "other" and p.get("severity") not in ("Extreme", "Severe"):
-            continue
-        covers_point = (f.get("id") in point_ids) if point_ids is not None else None
-        # resolve geometry only for alerts that matter (cover the facility, or are polygons)
-        if not covers_point and not f.get("geometry"):
-            continue
-        a = _normalize_live(f, area_retrieved)
-        a["nws_says_covers_facility_point"] = covers_point
-        a["distance_km"] = 0.0 if covers_point else _distance_km(a, lat, lon)
-        if not covers_point and (a["distance_km"] is None or a["distance_km"] > MAX_REGIONAL_KM):
-            continue
-        state_, hrs = in_effect(a, now)
-        if state_ == "expired" or (state_ == "upcoming" and hrs > horizon_hours):
-            continue
-        alerts.append(a)
 
-    weather = None
+def _recent_alerts(facility, as_of, now, errors, sources, ds_sources):
+    state, lat, lon = facility["state"], facility["latitude"], facility["longitude"]
+    features, point_ids, retrieved, cached = [], None, now.isoformat(), False
     try:
-        w = nws_client.fetch_weather(lat, lon)
-        weather = {
-            "observation": w.get("observation"), "observation_station": (w.get("observation_stations") or [{}])[0],
-            "forecast": [{k: pd.get(k) for k in ("name", "startTime", "temperature", "temperatureUnit", "windSpeed",
-                                                  "shortForecast", "probabilityOfPrecipitation")}
-                         for pd in w.get("forecast", [])[:6]],
-            "grid": w["location"], "retrieved_at": retrieved,
-        }
-        sources.extend(w.get("sources", []))
+        features, meta = nws_client.fetch_alert_features_recent(as_of, area=state, now=now)
+        ds_sources.extend(meta["sources"]); retrieved, cached = meta["retrieved_at"], meta["cached"]
+        sources.append(meta["sources"][0]["url"] + f" ?area={state}")
     except Exception as e:
-        errors.append(f"NWS forecast/observation failed: {e}")
+        errors.append(f"NWS alert history for {state} failed: {e}")
+    try:
+        pf, pmeta = nws_client.fetch_alert_features_recent(as_of, point=(lat, lon), now=now)
+        point_ids = {f.get("id") for f in pf}
+        ds_sources.extend(pmeta["sources"])
+    except Exception as e:
+        errors.append(f"NWS point alert history failed: {e}")
+    return features, point_ids, retrieved, "NWS API alert history (as of the requested time)", cached
+
+
+def picture_at(facility, as_of=None, horizon_hours=36):
+    """Real NWS data for a facility at an as-of moment (aware datetime; None = now).
+
+    mode: 'live' (now) | 'recent' (about the last week: NWS alert history) | 'archive' (older: IEM archive of NWS products).
+    Failures are returned in `errors`, never papered over with made-up data.
+    """
+    now = _now()
+    as_of = (as_of or now).astimezone(timezone.utc)
+    mode = nws_client.classify_mode(as_of, now)
+    lat, lon = facility["latitude"], facility["longitude"]
+    errors, alerts, sources, ds_sources, ds_notes = [], [], [], [], []
+    weather = None
+
+    if mode == "archive":
+        try:
+            r = iem_client.fetch_alerts_at(lat, lon, as_of, radius_km=MAX_REGIONAL_KM)
+            ds_sources.extend(r["sources"]); ds_notes.extend(r["notes"])
+            sources.extend(s["url"] for s in r["sources"])
+            for a in r["alerts"]:
+                a = _finish(dict(a))
+                if not _wanted(a["event"], a["description"], a["severity"]):
+                    continue
+                a["nws_says_covers_facility_point"] = a.get("covers_point")
+                state_, hrs = in_effect(a, as_of)
+                if state_ == "expired" or (state_ == "upcoming" and hrs > horizon_hours):
+                    continue
+                alerts.append(a)
+        except Exception as e:
+            errors.append(f"Archive alert query failed: {e}")
+        try:
+            o = iem_client.fetch_observation_at(lat, lon, as_of, state=facility.get("state"))
+            ds_sources.extend(o["sources"]); ds_notes.extend(o["notes"])
+            if o["observation"]:
+                weather = {"observation": o["observation"], "observation_station": o["station"], "forecast": [],
+                           "forecast_note": "Forecasts are not available for past times.", "retrieved_at": o["retrieved_at"], "cached": o["cached"]}
+        except Exception as e:
+            errors.append(f"Archive observation query failed: {e}")
+    else:
+        if mode == "live":
+            features, point_ids, retrieved, source, cached = _live_alerts(facility, now, errors, sources)
+        else:
+            features, point_ids, retrieved, source, cached = _recent_alerts(facility, as_of, now, errors, sources, ds_sources)
+        for f in features:
+            p = f.get("properties", {})
+            if not _wanted(p.get("event"), p.get("description"), p.get("severity")):
+                continue
+            covers_point = (f.get("id") in point_ids) if point_ids is not None else None
+            if not covers_point and not f.get("geometry"):
+                continue   # resolve geometry only for alerts that cover the facility or are polygons
+            a = _normalize_feature(f, retrieved, source, cached)
+            a["nws_says_covers_facility_point"] = covers_point
+            a["distance_km"] = 0.0 if covers_point else _distance_km(a, lat, lon)
+            if not covers_point and (a["distance_km"] is None or a["distance_km"] > MAX_REGIONAL_KM):
+                continue
+            state_, hrs = in_effect(a, as_of)
+            if state_ == "expired" or (state_ == "upcoming" and hrs > horizon_hours):
+                continue
+            alerts.append(a)
+        try:
+            if mode == "live":
+                w = nws_client.fetch_weather(lat, lon)
+                weather = {
+                    "observation": w.get("observation"), "observation_station": (w.get("observation_stations") or [{}])[0],
+                    "forecast": [{k: pd.get(k) for k in ("name", "startTime", "temperature", "temperatureUnit", "windSpeed",
+                                                          "shortForecast", "probabilityOfPrecipitation")} for pd in w.get("forecast", [])[:6]],
+                    "grid": w["location"], "retrieved_at": now.isoformat(),
+                }
+                sources.extend(w.get("sources", []))
+            else:
+                obs, station, meta = nws_client.fetch_observation_recent(lat, lon, as_of, now=now)
+                ds_sources.extend(meta["sources"]); ds_notes.extend(meta["notes"])
+                if obs:
+                    weather = {"observation": obs, "observation_station": station, "forecast": [],
+                               "forecast_note": "Forecasts are not available for past times.", "retrieved_at": meta["retrieved_at"], "cached": meta["cached"]}
+        except Exception as e:
+            errors.append(f"NWS forecast/observation failed: {e}")
 
     alerts.sort(key=lambda a: -a["priority_score"])
+    names = {"live": "NWS API (live)", "recent": "NWS API (alert history, about the last week)", "archive": iem_client.SOURCE}
+    cached_all = bool(ds_sources) and all(s.get("cached") for s in ds_sources)
+    times = [s["retrieved_at"] for s in ds_sources if s.get("retrieved_at")]
+    if mode == "live":
+        ds_notes = []
+    data_source = {"name": names[mode], "cached": cached_all, "cache_retrieved_at": min(times) if cached_all and times else None,
+                   "retrieved_at": min(times) if times else now.isoformat(), "notes": ds_notes}
+    disclaimer = None if mode == "live" else (
+        f"Archived real NWS products as of {as_of:%Y-%m-%d %H:%M} UTC; not a live alert. "
+        + ("Served from the IEM archive. " if mode == "archive" else "Served from the NWS API's alert history. ")
+        + ("Cached copy of a real response retrieved " + data_source["cache_retrieved_at"][:19] + " UTC." if data_source["cached"] else ""))
     return {
-        "mode": "live", "scenario": None, "as_of": retrieved, "retrieved_at": retrieved,
+        "mode": mode, "scenario": None, "as_of": as_of.isoformat(), "retrieved_at": now.isoformat(),
         "alerts": alerts, "weather": weather, "sources": sources, "errors": errors,
-        "disclaimer": None,
-    }
-
-
-# ---------------------------------------------------------------- historical replay
-def list_replay_scenarios():
-    out = []
-    for p in sorted(config.REPLAY_DIR.glob("*.json")):
-        d = json.loads(p.read_text())
-        out.append({"scenario_id": d["scenario_id"], "title": d.get("title"), "disclaimer": d.get("disclaimer"),
-                    "snapshots": [{"index": i, "as_of": s["as_of"], "label": s.get("label")}
-                                  for i, s in enumerate(d.get("snapshots", []))]})
-    return out
-
-
-def replay_picture(scenario_id, snapshot_index):
-    matches = [p for p in config.REPLAY_DIR.glob("*.json") if json.loads(p.read_text()).get("scenario_id") == scenario_id]
-    if not matches:
-        raise KeyError(f"unknown replay scenario: {scenario_id}")
-    d = json.loads(matches[0].read_text())
-    snap = d["snapshots"][snapshot_index]
-    retrieved = _now().isoformat()
-    alerts = []
-    for raw in snap.get("alerts", []):
-        a = {k: raw.get(k) for k in ("id", "event", "headline", "description", "instruction", "severity", "urgency",
-                                     "certainty", "status", "message_type", "areaDesc", "sent", "effective", "onset",
-                                     "expires", "ends", "sender", "geometry", "geometry_kind")}
-        a["status"] = a["status"] or "Actual"
-        a["source"] = f"HISTORICAL ARCHIVE ({d.get('title')})"
-        a["source_url"] = raw.get("source_url")
-        a["retrieved_at"] = retrieved
-        alerts.append(_finish(a))
-    alerts.sort(key=lambda a: -a["priority_score"])
-    obs = (snap.get("observations") or [None])[0]
-    return {
-        "mode": "replay", "scenario": {"scenario_id": d["scenario_id"], "title": d.get("title"), "label": snap.get("label"),
-                                         "snapshot_index": snapshot_index, "facts": d.get("facts")},
-        "as_of": snap["as_of"], "retrieved_at": retrieved, "alerts": alerts,
-        "weather": {"observation": obs, "observations": snap.get("observations"), "forecast": None} if obs else None,
-        "sources": [s.get("url") for s in d.get("sources", [])], "errors": [],
-        "disclaimer": d.get("disclaimer"),
+        "disclaimer": disclaimer.strip() if disclaimer else None, "data_source": data_source,
     }

@@ -3,7 +3,7 @@ import { Link } from "react-router-dom";
 import { MapContainer, TileLayer, LayersControl, Polygon, CircleMarker, Tooltip } from "react-leaflet";
 import { contours } from "d3-contour";
 import { useData } from "../DataContext.jsx";
-import { HAZARD_ICONS, STATUS, affectedText } from "../data.js";
+import { HAZARD_ICONS, STATUS, STATE_NAMES, affectedText } from "../data.js";
 
 // Light -> dark red, one hue (checked: ordered, distinct, readable)
 const BANDS = ["#f29a8f", "#e5675b", "#c93a31", "#9b2320", "#6e1414"];
@@ -28,7 +28,7 @@ export default function Home() {
           <section className={`block box ${noAlert ? "calm-box" : "alert-box"}`}>
             <p className="kicker"><span aria-hidden="true">{noAlert ? "✓" : (HAZARD_ICONS[a.type] || HAZARD_ICONS.default)}</span> {noAlert ? "No active alerts" : "Active alert"}</p>
             <h1 className="serif">{a.title}</h1>
-            <p className="muted">{noAlert ? "The National Weather Service has no active warnings for this office." : `${a.area} · until ${a.expires}`}</p>
+            <p className="muted">{noAlert ? (data.mode === "live" ? "The National Weather Service has no active warnings for this office." : "At this moment the National Weather Service had no active warnings for this office.") : `${a.area}${a.expires && a.expires !== "—" ? ` · until ${a.expires}` : ""}`}</p>
             <p className="muted small">Source: {a.source}</p>
           </section>
 
@@ -47,10 +47,11 @@ export default function Home() {
           <TopoMap data={data} facility={facility} />
           <section className="box">
             <h2 className="label">All facilities</h2>
+            <div className="facility-scroll">
             <table className="facility-table">
             <thead><tr><th>Facility</th><th>Status</th><th>Affected</th></tr></thead>
             <tbody>
-              {data.facilities.map(f => {
+              {sortBySeverity(data.facilities).map(f => {
                 const fs = STATUS[f.status] || STATUS.normal;
                 return (
                   <tr key={f.id} className={f.id === facility.id ? "on" : ""} onClick={() => setFacId(f.id)}>
@@ -62,6 +63,7 @@ export default function Home() {
               })}
             </tbody>
           </table>
+            </div>
           </section>
         </section>
       </main>
@@ -119,6 +121,48 @@ function buildContours(points) {
     .filter(b => b.positions.length > 0);
 }
 
+// ---- NWS alert areas for the map: real geometry from the backend, when it sends it ----
+const LEVEL_COLORS = { 5: "#9b2320", 4: "#d03b3b", 3: "#ec835a", 2: "#fab219", 1: "#f3dc8a" };
+const SEVERITY_LEVEL = { Extreme: 5, Severe: 4, Moderate: 3, Minor: 2 };
+
+// GeoJSON ring [lon, lat] -> Leaflet [lat, lon]
+const ring = r => r.map(([lon, lat]) => [lat, lon]);
+function geoPositions(g) {
+  if (!g) return null;
+  if (g.type === "Polygon") return g.coordinates.map(ring);
+  if (g.type === "MultiPolygon") return g.coordinates.map(poly => poly.map(ring));
+  return null;
+}
+
+function warningShapes(facility) {
+  const own = (facility.alerts || []).filter(a => a.geometry);
+  const list = own.length ? own : (facility.engine?.alerts || []).filter(a => a.geometry);
+  return list.map((a, i) => {
+    const level = a.level ?? a.base_level ?? SEVERITY_LEVEL[a.severity] ?? 3;
+    const until = a.expires || a.ends;
+    return {
+      id: `${a.id || i}`, event: a.event, positions: geoPositions(a.geometry), color: LEVEL_COLORS[level] || LEVEL_COLORS[3],
+      until: until && !Number.isNaN(new Date(until).getTime()) ? new Date(until).toLocaleString([], { weekday: "short", hour: "numeric", minute: "2-digit" }) : null,
+      approx: a.geometry_kind === "county_zone",
+    };
+  }).filter(sh => sh.positions);
+}
+
+// A hurricane warning can span hundreds of miles; only fit the map to the part near the office.
+function nearPoints(positions, facility) {
+  const pts = [];
+  const walk = n => (typeof n[0] === "number" ? pts.push(n) : n.forEach(walk));
+  walk(positions);
+  const clamp = (v, c, d) => Math.max(c - d, Math.min(c + d, v));
+  return pts.map(([lat, lon]) => [clamp(lat, facility.lat, 1.0), clamp(lon, facility.lon, 1.3)]);
+}
+
+const STATUS_ORDER = { closed: 0, telework: 1, delay: 2, normal: 3, unknown: 4 };
+function sortBySeverity(list) {
+  return [...list].sort((a, b) => (STATUS_ORDER[a.status] ?? 4) - (STATUS_ORDER[b.status] ?? 4)
+    || (b.affected ?? -1) - (a.affected ?? -1) || a.name.localeCompare(b.name));
+}
+
 function TopoMap({ data, facility }) {
   const affected = useMemo(
     () => data.employees.filter(e => e.facility === facility.id && e.affected),
@@ -126,12 +170,11 @@ function TopoMap({ data, facility }) {
   );
   const bands = useMemo(() => buildContours(affected), [affected]);
 
-  const poly = facility.alertPolygon !== undefined ? facility.alertPolygon
-    : facility.alert === undefined ? data.alert.polygon : null;
+  const shapes = useMemo(() => warningShapes(facility), [facility]);
   const bounds = [
     [facility.lat, facility.lon],
     ...affected.map(e => [e.lat, e.lon]),
-    ...(poly || []).map(([lon, lat]) => [lat, lon]),
+    ...shapes.flatMap(sh => nearPoints(sh.positions, facility)),
   ];
   if (bounds.length === 1) bounds.push([facility.lat + 0.12, facility.lon + 0.16], [facility.lat - 0.12, facility.lon - 0.16]);
 
@@ -156,12 +199,16 @@ function TopoMap({ data, facility }) {
           </LayersControl.BaseLayer>
         </LayersControl>
 
-        {poly && (
-          <Polygon positions={poly.map(([lon, lat]) => [lat, lon])}
-            pathOptions={{ color: "#1b1f24", weight: 1.5, dashArray: "6 5", fill: false }}>
-            <Tooltip sticky>NWS warning area</Tooltip>
+        {shapes.map(sh => (
+          <Polygon key={sh.id} positions={sh.positions}
+            pathOptions={{ color: "#1b1f24", weight: 1.5, dashArray: "6 5", fillColor: sh.color, fillOpacity: 0.1 }}>
+            <Tooltip sticky>
+              <strong>{sh.event}</strong>
+              {sh.until && <div className="tt-muted">until {sh.until}</div>}
+              {sh.approx && <div className="tt-muted">Approximate: whole county/zone shapes</div>}
+            </Tooltip>
           </Polygon>
-        )}
+        ))}
 
         {bands.map(b => (
           <Polygon key={b.level} positions={b.positions}
@@ -199,7 +246,7 @@ function TopoMap({ data, facility }) {
           {BANDS.map(c => <span key={c} className="ramp-step" style={{ background: c }} />)}
           <span className="small">High</span>
         </span>
-        <span className="legend-item"><span className="key-dash" /> NWS warning area</span>
+        <span className="legend-item"><span className="key-dash" /> NWS alert area{shapes.some(s => s.approx) ? " (county/zone shapes are approximate)" : ""}</span>
         <span className="legend-item"><span className="key-dot" /> Facility</span>
       </div>
     </div>
@@ -229,6 +276,7 @@ function FacilityMenu({ data, facility, setFacId }) {
   const s = STATUS[facility.status] || STATUS.normal;
   const current = alertFor(facility, data);
   const list = data.facilities.filter(f => f.name.toLowerCase().includes(q.toLowerCase()));
+  const states = [...new Set(list.map(f => f.state || ""))].sort();
 
   return (
     <div className="fmenu" ref={ref}>
@@ -247,7 +295,11 @@ function FacilityMenu({ data, facility, setFacId }) {
               onChange={e => setQ(e.target.value)} aria-label="Search facilities" />
           )}
           <ul role="listbox" aria-label="Facilities">
-            {list.map(f => {
+            {states.map(st => (
+              <li key={st || "other"} role="presentation" className="fmenu-group-item">
+                {states.length > 1 && <p className="fmenu-group">{STATE_NAMES[st] || st || "Other"}</p>}
+                <ul role="group" aria-label={STATE_NAMES[st] || st || "Other"}>
+            {list.filter(f => (f.state || "") === st).sort((a, b) => a.name.localeCompare(b.name)).map(f => {
               const fs = STATUS[f.status] || STATUS.normal;
               const al = alertFor(f, data);
               return (
@@ -266,6 +318,9 @@ function FacilityMenu({ data, facility, setFacId }) {
                 </li>
               );
             })}
+                </ul>
+              </li>
+            ))}
             {list.length === 0 && <li className="muted small fmenu-empty">No matches</li>}
           </ul>
         </div>

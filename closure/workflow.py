@@ -1,7 +1,7 @@
 """Orchestration: evaluate -> second opinion -> manager decision -> notifications, every step logged."""
 from datetime import datetime, timezone
 
-from . import synthetic, hazards, impact as impact_mod, roads as roads_mod, engine, store
+from . import clock, synthetic, hazards, impact as impact_mod, roads as roads_mod, engine, store
 from .sectors import POSTURE_LABELS
 
 
@@ -11,16 +11,24 @@ class Ctx:
         self.impact, self.roads, self.deterministic = impact, roads, deterministic
 
 
-def evaluate(facility_id, mode="live", scenario_id=None, snapshot_index=0):
+def evaluate(facility_id, as_of=None):
+    """Query real sources for the facility at the as-of moment (ISO string / datetime / None = clock default), then evaluate."""
     facility = synthetic.get_facility(facility_id)
-    picture = hazards.replay_picture(scenario_id, snapshot_index) if mode == "replay" else hazards.live_picture(facility)
+    as_dt, clock_info = clock.resolve_as_of(as_of)
+    picture = hazards.picture_at(facility, as_dt)
+    picture["clock"] = clock_info
+    return evaluate_picture(facility, picture)
+
+
+def evaluate_picture(facility, picture):
+    """Rule engine + impact + audit record for an already-retrieved picture (also used with SYNTHETIC pictures in tests)."""
     as_of = hazards.parse_ts(picture["as_of"])
     win = engine.operating_window(facility, as_of)
-    imp = impact_mod.analyze_employees(facility, synthetic.employees_for(facility_id), picture["alerts"], win["window_start"], win["window_end"])
-    rd = roads_mod.road_conditions(facility, mode)
+    imp = impact_mod.analyze_employees(facility, synthetic.employees_for(facility["id"]), picture["alerts"], win["window_start"], win["window_end"])
+    rd = roads_mod.road_conditions(facility, picture["mode"])
     det = engine.evaluate(facility, picture, imp, rd, as_of)
     eid = store.new_evaluation_id()
-    rec = store.append(eid, facility_id, "evaluation", {"facility": facility, "picture": picture, "impact": imp, "roads": rd, "deterministic": det})
+    rec = store.append(eid, facility["id"], "evaluation", {"facility": facility, "picture": picture, "impact": imp, "roads": rd, "deterministic": det})
     return Ctx(eid, facility, picture, imp, rd, det), rec
 
 
@@ -38,11 +46,11 @@ def view(ctx, record=None):
     covers = {a["id"] for a in ctx.impact["facility_alerts"]}
     alerts = [{**{k: a[k] for k in ("id", "event", "headline", "severity", "urgency", "certainty", "sent", "effective", "onset", "expires",
                                     "hazard_class", "base_level", "priority_score", "geometry", "geometry_kind", "source", "source_url",
-                                    "retrieved_at", "areaDesc", "travel_impacting")},
+                                    "retrieved_at", "areaDesc", "travel_impacting", "cached")},
                "covers_facility": a["id"] in covers, "used_in_decision": a["id"] in set(ctx.impact["relevant_alert_ids"])}
               for a in pic["alerts"]]
     return {
-        "evaluation_id": ctx.evaluation_id, "record": record, "mode": pic["mode"], "scenario": pic.get("scenario"),
+        "evaluation_id": ctx.evaluation_id, "record": record, "mode": pic["mode"], "clock": pic.get("clock"), "data_source": pic.get("data_source"),
         "disclaimer": pic.get("disclaimer"), "as_of": pic["as_of"], "retrieved_at": pic["retrieved_at"], "errors": pic["errors"],
         "facility": ctx.facility, "alerts": alerts, "weather": pic.get("weather"), "sources": pic["sources"],
         "employees": [{"lat": p["home_lat"], "lon": p["home_lon"], "risk": p["commute_risk"], "essential": p["essential"]} for p in ctx.impact["people"]],
@@ -82,7 +90,7 @@ def reconstruct(evaluation_id):
             "timeline": [{"type": e["event_type"], "at": e["created_at"], "sha256": e["sha256"]} for e in events],
             "facility": ev["facility"], "weather_and_alerts": {"mode": ev["picture"]["mode"], "as_of": ev["picture"]["as_of"], "retrieved_at": ev["picture"]["retrieved_at"],
                                                               "alerts": [{k: a.get(k) for k in ("id", "event", "sent", "effective", "onset", "expires", "retrieved_at", "source", "source_url")} for a in ev["picture"]["alerts"]],
-                                                              "errors": ev["picture"]["errors"], "scenario": ev["picture"].get("scenario")},
+                                                              "errors": ev["picture"]["errors"], "clock": ev["picture"].get("clock"), "data_source": ev["picture"].get("data_source")},
             "employee_impact": ev["impact"]["metrics"], "roads": ev["roads"],
             "rule_thresholds": ev["deterministic"]["rules"], "initial_recommendation": {k: ev["deterministic"][k] for k in ("posture", "binding_rule", "justification", "confidence", "sensitivity", "evaluated_at", "as_of")},
             "second_opinion": by.get("second_opinion", [{}])[-1].get("payload"),

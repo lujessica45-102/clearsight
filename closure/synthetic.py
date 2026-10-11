@@ -68,7 +68,10 @@ def facility_meta():
 
 
 def _seed_store():
-    from parser.facilities import FacilityStore
+    try:
+        from parser.facility_cleaning.facilities import FacilityStore   # current location
+    except ImportError:
+        from parser.facilities import FacilityStore                     # older layout
     store = FacilityStore(config.FACILITIES_DB)
     have = {f["id"] for f in store.all()}
     for fid, name, sector, lat, lon, tz, (o, c), n, _ in _FACILITIES:

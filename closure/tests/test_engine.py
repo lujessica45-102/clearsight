@@ -1,5 +1,5 @@
 """Deterministic tests. Alerts marked SYNTHETIC TEST FIXTURE are invented geometry used only to exercise rules
-(no archived real event covers that case); the Hurricane Michael tests use the real archived fixture."""
+(no archived real event covers that case). Tests that query real NWS/IEM data live in test_asof.py (network-marked)."""
 import os, sqlite3, tempfile
 _tmp = tempfile.mkdtemp()
 os.environ["CLEARSIGHT_DECISIONS_DB"] = os.path.join(_tmp, "decisions.db")
@@ -7,7 +7,7 @@ os.environ["CLEARSIGHT_FACILITIES_DB"] = os.path.join(_tmp, "facilities.db")
 
 from datetime import datetime, timezone, timedelta
 import pytest
-from closure import synthetic, hazards, impact, roads, engine, store, workflow, agents
+from closure import synthetic, hazards, impact, roads, engine, store, workflow, agents, clock
 
 
 def box(lat0, lat1, lon0, lon1):
@@ -111,43 +111,7 @@ def test_weekend_evaluation_targets_next_operating_day():
 def test_unavailable_road_data_is_explicit_and_never_invented():
     r = roads.road_conditions(synthetic.get_facility("ne-lincoln-sc"), "live")
     assert r["status"] == "unavailable" and r["events"] == [] and "API key" in r["reason"]
-    assert roads.road_conditions(synthetic.get_facility("fl-pensacola-sc"), "replay")["status"] == "unavailable"
-
-
-@pytest.mark.parametrize("fid", ["fl-panamacity-sc", "fl-panamacity-fo", "fl-tallahassee-hq", "fl-pensacola-lab"])
-def test_michael_replay_recommends_closure_before_landfall(fid):
-    ctx, _ = workflow.evaluate(fid, "replay", "michael_2018", 2)   # real archive: 4 AM CDT Oct 10, 2018
-    assert ctx.deterministic["posture"] == "closure" and ctx.deterministic["binding_rule"] == "R1"
-    assert ctx.picture["mode"] == "replay" and ctx.picture["disclaimer"]
-    assert all(a["source"].startswith("HISTORICAL ARCHIVE") for a in ctx.picture["alerts"])
-
-
-def test_michael_aftermath_has_no_alerts_and_says_not_safe_to_assume():
-    ctx, _ = workflow.evaluate("fl-panamacity-sc", "replay", "michael_2018", 4)
-    assert ctx.deterministic["posture"] == "normal"
-    assert any("NOT represented" in f for f in ctx.deterministic["confidence"]["factors"])
-
-
-def test_decision_override_requires_reason_and_is_logged_with_intact_chain():
-    ctx, _ = workflow.evaluate("fl-panamacity-sc", "replay", "michael_2018", 2)
-    with pytest.raises(ValueError):
-        workflow.record_decision(ctx.evaluation_id, "telework", "  ", "Facility manager")
-    d, _ = workflow.record_decision(ctx.evaluation_id, "telework", "Staff already evacuated; telework for continuity.", "Facility manager")
-    assert d["is_override"] and d["human_approved"] and d["deterministic_posture"] == "closure"
-    rec = workflow.reconstruct(ctx.evaluation_id)
-    assert rec["chain_verified"] and [t["type"] for t in rec["timeline"]] == ["evaluation", "manager_decision"]
-    assert rec["manager_decision"]["reason"].startswith("Staff already")
-    assert rec["initial_recommendation"]["posture"] == "closure"
-
-
-def test_decision_log_is_append_only_and_tamper_evident():
-    ctx, _ = workflow.evaluate("fl-panamacity-sc", "replay", "michael_2018", 2)
-    c = sqlite3.connect(os.environ["CLEARSIGHT_DECISIONS_DB"])
-    with pytest.raises(sqlite3.DatabaseError):
-        c.execute("UPDATE events SET payload='{}' WHERE evaluation_id=?", (ctx.evaluation_id,))
-    with pytest.raises(sqlite3.DatabaseError):
-        c.execute("DELETE FROM events WHERE evaluation_id=?", (ctx.evaluation_id,))
-    assert store.verify_chain()[0]
+    assert roads.road_conditions(synthetic.get_facility("fl-pensacola-sc"), "archive")["status"] == "unavailable"
 
 
 def test_open_facility_with_short_hazard_holds_staff_instead_of_changing_status():
@@ -168,3 +132,46 @@ def test_open_ended_alerts_lower_confidence_explicitly():
     a = alert("Hurricane Warning", box(40.7, 40.9, -96.8, -96.6), WED_4AM_CT - timedelta(days=2), None)
     r, _ = run("ne-lincoln-sc", [a], WED_4AM_CT)
     assert any("no known end time" in f for f in r["confidence"]["factors"])
+
+
+
+# ---- decision log + overrides, using a SYNTHETIC test picture (no network) ---------------------------------
+def synthetic_ctx(fid="ne-lincoln-sc", event="Hurricane Warning"):
+    a = alert(event, box(40.7, 40.9, -96.8, -96.6), WED_4AM_CT - timedelta(days=1), None)
+    f = synthetic.get_facility(fid)
+    pic = {"mode": "archive", "scenario": None, "as_of": WED_4AM_CT.isoformat(), "retrieved_at": WED_4AM_CT.isoformat(), "alerts": [a],
+           "weather": None, "sources": [], "errors": [], "disclaimer": "SYNTHETIC TEST FIXTURE", "data_source": {"name": "synthetic", "cached": False, "notes": []}}
+    return workflow.evaluate_picture(f, pic)
+
+
+def test_decision_override_requires_reason_and_is_logged_with_intact_chain():
+    ctx, _ = synthetic_ctx()
+    with pytest.raises(ValueError):
+        workflow.record_decision(ctx.evaluation_id, "telework", "  ", "Facility manager")
+    d, _ = workflow.record_decision(ctx.evaluation_id, "telework", "Staff already evacuated; telework for continuity.", "Facility manager")
+    assert d["is_override"] and d["human_approved"] and d["deterministic_posture"] == "closure"
+    rec = workflow.reconstruct(ctx.evaluation_id)
+    assert rec["chain_verified"] and [t["type"] for t in rec["timeline"]] == ["evaluation", "manager_decision"]
+    assert rec["manager_decision"]["reason"].startswith("Staff already")
+
+
+def test_decision_log_is_append_only_and_tamper_evident():
+    ctx, _ = synthetic_ctx()
+    c = sqlite3.connect(os.environ["CLEARSIGHT_DECISIONS_DB"])
+    with pytest.raises(sqlite3.DatabaseError):
+        c.execute("UPDATE events SET payload='{}' WHERE evaluation_id=?", (ctx.evaluation_id,))
+    with pytest.raises(sqlite3.DatabaseError):
+        c.execute("DELETE FROM events WHERE evaluation_id=?", (ctx.evaluation_id,))
+    assert store.verify_chain()[0]
+
+
+# ---- fire weather rule R8 (SYNTHETIC polygons) --------------------------------------------------------------
+@pytest.mark.parametrize("fid,expect", [("ne-omaha-fo", "ignition"), ("ne-lincoln-lab", "ignition sources"), ("ne-lincoln-sc", "evacuation plan"), ("ne-omaha-hq", "evacuation plan")])
+def test_red_flag_warning_gives_sector_specific_actions_without_changing_posture(fid, expect):
+    f = synthetic.get_facility(fid)
+    a = alert("Red Flag Warning", box(f["latitude"] - 0.3, f["latitude"] + 0.3, f["longitude"] - 0.3, f["longitude"] + 0.3), WED_4AM_CT - timedelta(hours=3), WED_4AM_CT + timedelta(hours=30))
+    r, _ = run(fid, [a], WED_4AM_CT)
+    assert r["posture"] == "normal" and any(x["id"] == "R8" and x["fired"] for x in r["rules"])
+    assert any(x.startswith("FIRE WEATHER") and expect in x for x in r["immediate_actions"])
+    assert any("evacuation orders" in x for x in r["confidence"]["factors"]), "must say NWS data has no wildfire evacuation orders"
+    assert hazards.classify("Red Flag Warning", "", None) == ("fire", 3) and hazards.classify("Fire Weather Watch", "", None) == ("fire", 2)

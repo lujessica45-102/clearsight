@@ -7,7 +7,9 @@ from concurrent.futures import ThreadPoolExecutor
 from fastapi import FastAPI, HTTPException
 from pydantic import BaseModel
 
-from . import config, synthetic, hazards, workflow, store, agents
+from parser import http_cache, nws_client
+
+from . import clock, config, synthetic, workflow, store, agents
 from .sectors import SECTORS, POSTURE_LABELS
 
 app = FastAPI(title="ClearSight decision support")
@@ -17,9 +19,7 @@ _jobs, _jobs_lock = {}, threading.Lock()
 
 class EvaluateReq(BaseModel):
     facility_id: str
-    mode: str = "live"                 # "live" | "replay"
-    scenario_id: str | None = None
-    snapshot_index: int = 0
+    as_of: str | None = None           # ISO-8601 moment to evaluate; omit for the app clock (CLEARSIGHT_NOW or real time)
 
 
 class EvalRef(BaseModel):
@@ -64,19 +64,26 @@ def facilities():
             "postures": POSTURE_LABELS, "facilities": synthetic.list_facilities()}
 
 
-@app.get("/api/replay/scenarios")
-def scenarios():
-    return hazards.list_replay_scenarios()
+@app.get("/api/clock")
+def get_clock(asof: str | None = None):
+    try:
+        _, info = clock.resolve_as_of(asof)
+    except clock.ClockError as e:
+        raise HTTPException(400, str(e))
+    return {"clock": info, "earliest": clock.EARLIEST.isoformat(), "recent_window_days": nws_client.RECENT_DAYS,
+            "live_tolerance_minutes": int(nws_client.LIVE_TOLERANCE.total_seconds() // 60), "offline": http_cache.offline()}
 
 
 @app.post("/api/evaluate")
 def evaluate(req: EvaluateReq):
     try:
-        ctx, rec = workflow.evaluate(req.facility_id, req.mode, req.scenario_id, req.snapshot_index)
+        ctx, rec = workflow.evaluate(req.facility_id, req.as_of)
     except KeyError as e:
         raise HTTPException(404, str(e))
-    except IndexError:
-        raise HTTPException(400, "snapshot_index out of range")
+    except clock.ClockError as e:
+        raise HTTPException(400, str(e))
+    except http_cache.OfflineCacheMiss as e:
+        raise HTTPException(503, str(e))
     return workflow.view(ctx, rec)
 
 
