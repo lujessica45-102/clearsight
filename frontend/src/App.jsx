@@ -21,6 +21,13 @@ function Logo() {
 function FacilityPicker() {
   const { data, facId, setFacId } = useData();
   if (!data) return null;
+  if (data.facilities.length > 4) {  // many offices from the backend: use a dropdown
+    return (
+      <select className="picker-select" value={facId || ""} onChange={e => setFacId(e.target.value)} aria-label="Facility">
+        {data.facilities.map(f => <option key={f.id} value={f.id}>{f.name}</option>)}
+      </select>
+    );
+  }
   return (
     <div className="picker" role="radiogroup" aria-label="Facility">
       {data.facilities.map(f => {
@@ -37,6 +44,19 @@ function FacilityPicker() {
   );
 }
 
+function DataBadge() {
+  const { data } = useData();
+  if (!data) return null;
+  const live = data.mode === "live";
+  const when = live && data.generated_at
+    ? new Date(data.generated_at).toLocaleTimeString([], { hour: "numeric", minute: "2-digit" }) : "";
+  return (
+    <span className={`data-badge ${live ? "live" : ""}`}>
+      <span className="dot" aria-hidden="true" />{live ? `Live NWS data · updated ${when}` : "Sample scenario"}
+    </span>
+  );
+}
+
 export default function App() {
   return (
     <DataProvider>
@@ -44,8 +64,8 @@ export default function App() {
         <header className="topbar">
           <div className="topbar-left">
             <Link to="/" className="brand"><Logo />clearsight</Link>
-            <FacilityPicker />
           </div>
+          <DataBadge />
           <nav className="topnav">
             <NavLink to="/" end>Overview</NavLink>
             <NavLink to="/second-opinion">Second opinion</NavLink>

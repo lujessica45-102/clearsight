@@ -11,6 +11,7 @@ export const STATUS = {
   telework: { label: "Telework", color: "#ec835a" },
   delay:    { label: "Delay",    color: "#fab219" },
   normal:   { label: "Normal",   color: "#0ca30c" },
+  unknown:  { label: "Not decided", color: "#9aa3ad" },
 };
 
 export const SEVERITY = {
@@ -258,6 +259,8 @@ export const MOCK = {
 
 // Live data from the backend; falls back to sample data if it's not ready
 export async function getCurrent() {
+  // Add ?demo to the address to show the sample tornado scenario instead of live data
+  if (new URLSearchParams(window.location.search).has("demo")) return MOCK;
   try {
     const r = await fetch(API + "/api/current");
     if (!r.ok) throw new Error();
@@ -266,3 +269,6 @@ export async function getCurrent() {
     return MOCK;
   }
 }
+
+// "12 of 14" when the backend knows employee counts, otherwise a dash
+export const affectedText = f => (f.affected == null || f.total == null ? "—" : `${f.affected} of ${f.total}`);

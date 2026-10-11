@@ -1,9 +1,9 @@
-import { useMemo } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { Link } from "react-router-dom";
 import { MapContainer, TileLayer, LayersControl, Polygon, CircleMarker, Tooltip } from "react-leaflet";
 import { contours } from "d3-contour";
 import { useData } from "../DataContext.jsx";
-import { HAZARD_ICONS, STATUS } from "../data.js";
+import { HAZARD_ICONS, STATUS, affectedText } from "../data.js";
 
 // Light -> dark red, one hue (checked: ordered, distinct, readable)
 const BANDS = ["#f29a8f", "#e5675b", "#c93a31", "#9b2320", "#6e1414"];
@@ -14,17 +14,21 @@ const SIGMA = 0.012;                         // spread of each employee, in degr
 export default function Home() {
   const { data, facility, setFacId } = useData();
   if (!data || !facility) return <p className="loading">Loading…</p>;
-  const a = data.alert;
+  // Live data gives each office its own alert (or none); the sample scenario shares one
+  const a = facility.alert === undefined ? data.alert
+    : facility.alert || { type: "default", title: "No active warnings", area: facility.name, expires: "—", source: "National Weather Service" };
   const s = STATUS[facility.status] || STATUS.normal;
+  const noAlert = a.title === "No active warnings";
 
   return (
     <>
       <main className="home">
         <aside className="home-side">
-          <section className="block box alert-box">
-            <p className="kicker"><span aria-hidden="true">{HAZARD_ICONS[a.type] || HAZARD_ICONS.default}</span> Active alert</p>
+          <FacilityMenu data={data} facility={facility} setFacId={setFacId} />
+          <section className={`block box ${noAlert ? "calm-box" : "alert-box"}`}>
+            <p className="kicker"><span aria-hidden="true">{noAlert ? "✓" : (HAZARD_ICONS[a.type] || HAZARD_ICONS.default)}</span> {noAlert ? "No active alerts" : "Active alert"}</p>
             <h1 className="serif">{a.title}</h1>
-            <p className="muted">{a.area} · until {a.expires}</p>
+            <p className="muted">{noAlert ? "The National Weather Service has no active warnings for this office." : `${a.area} · until ${a.expires}`}</p>
             <p className="muted small">Source: {a.source}</p>
           </section>
 
@@ -32,7 +36,9 @@ export default function Home() {
             <p className="kicker">This facility</p>
             <h2 className="serif">{facility.name}</h2>
             <p className="sev"><span className="sq" style={{ background: s.color }} aria-hidden="true" />Status: <strong>{s.label}</strong></p>
-            <p className="stat"><strong>{facility.affected}</strong> of {facility.total} employees affected</p>
+            {facility.affected == null
+              ? <p className="muted small">{facility.address}</p>
+              : <p className="stat"><strong>{facility.affected}</strong> of {facility.total} employees affected</p>}
             <ul className="list">{facility.bullets.map((b, i) => <li key={i}>{b}</li>)}</ul>
           </section>
         </aside>
@@ -50,7 +56,7 @@ export default function Home() {
                   <tr key={f.id} className={f.id === facility.id ? "on" : ""} onClick={() => setFacId(f.id)}>
                     <td>{f.name}</td>
                     <td><span className="sq" style={{ background: fs.color }} aria-hidden="true" /> {fs.label}</td>
-                    <td>{f.affected} of {f.total}</td>
+                    <td>{affectedText(f)}</td>
                   </tr>
                 );
               })}
@@ -120,11 +126,14 @@ function TopoMap({ data, facility }) {
   );
   const bands = useMemo(() => buildContours(affected), [affected]);
 
+  const poly = facility.alertPolygon !== undefined ? facility.alertPolygon
+    : facility.alert === undefined ? data.alert.polygon : null;
   const bounds = [
     [facility.lat, facility.lon],
     ...affected.map(e => [e.lat, e.lon]),
-    ...(data.alert.polygon || []).map(([lon, lat]) => [lat, lon]),
+    ...(poly || []).map(([lon, lat]) => [lat, lon]),
   ];
+  if (bounds.length === 1) bounds.push([facility.lat + 0.12, facility.lon + 0.16], [facility.lat - 0.12, facility.lon - 0.16]);
 
   return (
     <div className="map-wrap box">
@@ -147,8 +156,8 @@ function TopoMap({ data, facility }) {
           </LayersControl.BaseLayer>
         </LayersControl>
 
-        {data.alert.polygon && (
-          <Polygon positions={data.alert.polygon.map(([lon, lat]) => [lat, lon])}
+        {poly && (
+          <Polygon positions={poly.map(([lon, lat]) => [lat, lon])}
             pathOptions={{ color: "#1b1f24", weight: 1.5, dashArray: "6 5", fill: false }}>
             <Tooltip sticky>NWS warning area</Tooltip>
           </Polygon>
@@ -176,7 +185,7 @@ function TopoMap({ data, facility }) {
               pathOptions={{ color: "#ffffff", weight: 3, fillColor: sel ? "#1b1f24" : "#7a818c", fillOpacity: 1 }}>
               <Tooltip permanent={sel} direction="right" offset={[10, 0]}>
                 <strong>{f.name}</strong>
-                {!sel ? null : <div className="tt-muted">{fs.label} · {f.affected} of {f.total} affected</div>}
+                {!sel ? null : <div className="tt-muted">{fs.label} · {affectedText(f)} affected</div>}
               </Tooltip>
             </CircleMarker>
           );
@@ -193,6 +202,74 @@ function TopoMap({ data, facility }) {
         <span className="legend-item"><span className="key-dash" /> NWS warning area</span>
         <span className="legend-item"><span className="key-dot" /> Facility</span>
       </div>
+    </div>
+  );
+}
+
+// ---- Facility dropdown (top left of the Overview page) ----
+function alertFor(f, data) {
+  // Live data: each office has its own alert (or none). Sample data: one shared alert.
+  if (f.alert === undefined) return data.alert;
+  return f.alert;
+}
+
+function FacilityMenu({ data, facility, setFacId }) {
+  const [open, setOpen] = useState(false);
+  const [q, setQ] = useState("");
+  const ref = useRef(null);
+
+  useEffect(() => {
+    const close = e => { if (ref.current && !ref.current.contains(e.target)) setOpen(false); };
+    const esc = e => { if (e.key === "Escape") setOpen(false); };
+    document.addEventListener("mousedown", close);
+    document.addEventListener("keydown", esc);
+    return () => { document.removeEventListener("mousedown", close); document.removeEventListener("keydown", esc); };
+  }, []);
+
+  const s = STATUS[facility.status] || STATUS.normal;
+  const current = alertFor(facility, data);
+  const list = data.facilities.filter(f => f.name.toLowerCase().includes(q.toLowerCase()));
+
+  return (
+    <div className="fmenu" ref={ref}>
+      <p className="kicker">Facility</p>
+      <button className="fmenu-btn" aria-haspopup="listbox" aria-expanded={open} onClick={() => setOpen(o => !o)}>
+        <span className="sq" style={{ background: s.color }} aria-hidden="true" />
+        <span className="fmenu-name">{facility.name}</span>
+        <span className="fmenu-chev" aria-hidden="true">{open ? "▴" : "▾"}</span>
+      </button>
+      <p className="fmenu-sub">{current ? current.title : "No active warnings"} · {data.facilities.length} facilities</p>
+
+      {open && (
+        <div className="fmenu-pop">
+          {data.facilities.length > 6 && (
+            <input className="fmenu-search" placeholder="Search facilities…" value={q} autoFocus
+              onChange={e => setQ(e.target.value)} aria-label="Search facilities" />
+          )}
+          <ul role="listbox" aria-label="Facilities">
+            {list.map(f => {
+              const fs = STATUS[f.status] || STATUS.normal;
+              const al = alertFor(f, data);
+              return (
+                <li key={f.id}>
+                  <button role="option" aria-selected={f.id === facility.id}
+                    className={f.id === facility.id ? "on" : ""}
+                    onClick={() => { setFacId(f.id); setOpen(false); setQ(""); }}>
+                    <span className="sq" style={{ background: fs.color }} aria-hidden="true" />
+                    <span className="fmenu-item">
+                      <span className="fmenu-item-name">{f.name}</span>
+                      <span className={`fmenu-item-alert ${al ? "has" : ""}`}>
+                        {al ? `${HAZARD_ICONS[al.type] || HAZARD_ICONS.default} ${al.title}` : "No active warnings"}
+                      </span>
+                    </span>
+                  </button>
+                </li>
+              );
+            })}
+            {list.length === 0 && <li className="muted small fmenu-empty">No matches</li>}
+          </ul>
+        </div>
+      )}
     </div>
   );
 }

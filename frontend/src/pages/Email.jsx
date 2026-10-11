@@ -2,6 +2,7 @@ import { useEffect, useMemo, useState } from "react";
 import { Link } from "react-router-dom";
 import { useData } from "../DataContext.jsx";
 import { STATUS, instructionFor, API } from "../data.js";
+import { Waiting } from "./SecondOpinion.jsx";
 
 export default function Email() {
   const { facility, employees } = useData();
@@ -13,6 +14,7 @@ export default function Email() {
   useEffect(() => { setPicked(new Set(affected.map(e => e.id))); }, [affected]);
 
   if (!facility) return <p className="loading">Loading…</p>;
+  if (!facility.email) return <Waiting facility={facility} title="I need an email" />;
   const s = STATUS[facility.status] || STATUS.normal;
   const recipients = affected.filter(e => picked.has(e.id));
   const toggle = id => setPicked(p => { const n = new Set(p); n.has(id) ? n.delete(id) : n.add(id); return n; });

@@ -297,3 +297,30 @@ input[type=checkbox]{accent-color:var(--brand)}
   .dstep{grid-template-columns:40px minmax(0,1fr)}
   .dstep-alt{grid-column:2;margin-top:-8px}
 }
+.data-badge{display:inline-flex;align-items:center;gap:7px;font-size:12px;color:var(--ink-2);padding:5px 10px;border:1px solid var(--line);border-radius:999px;background:#fff;margin-left:auto;margin-right:16px}
+.data-badge .dot{width:8px;height:8px;border-radius:50%;background:#9aa3ad}
+.data-badge.live .dot{background:#0ca30c;box-shadow:0 0 0 3px rgba(12,163,12,.18)}
+.picker-select{font:inherit;font-size:14px;padding:7px 12px;border:1px solid var(--line);border-radius:999px;background:#fff;color:var(--ink);max-width:280px}
+
+/* ---- Facility dropdown on the Overview page ---- */
+.fmenu{position:relative}
+.fmenu .kicker{margin-bottom:6px}
+.fmenu-btn{width:100%;display:flex;align-items:center;gap:10px;padding:12px 14px;border:1px solid #dfe5e1;border-radius:12px;background:#fff;font:inherit;font-size:16px;color:var(--ink);cursor:pointer;text-align:left;box-shadow:0 1px 2px rgba(16,24,40,.04)}
+.fmenu-btn:hover{border-color:var(--brand)}
+.fmenu-btn[aria-expanded="true"]{border-color:var(--brand);box-shadow:0 0 0 3px var(--brand-soft)}
+.fmenu-name{flex:1;font-weight:600;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.fmenu-chev{color:var(--muted)}
+.fmenu-sub{margin:6px 2px 0;font-size:13px;color:var(--muted)}
+.fmenu-pop{position:absolute;z-index:1200;top:calc(100% - 18px);left:0;right:-160px;background:#fff;border:1px solid #e7ebe8;border-radius:12px;box-shadow:0 18px 40px -16px rgba(16,24,40,.35);padding:8px;max-height:420px;display:flex;flex-direction:column}
+.fmenu-search{font:inherit;font-size:14px;padding:9px 12px;border:1px solid #e7ebe8;border-radius:8px;margin-bottom:6px}
+.fmenu-pop ul{list-style:none;margin:0;padding:0;overflow:auto}
+.fmenu-pop li button{width:100%;display:flex;align-items:flex-start;gap:10px;padding:9px 10px;border:0;border-radius:8px;background:none;font:inherit;text-align:left;cursor:pointer;color:var(--ink)}
+.fmenu-pop li button .sq{margin-top:5px}
+.fmenu-pop li button:hover{background:#f6f8f7}
+.fmenu-pop li button.on{background:var(--brand-soft)}
+.fmenu-item{display:flex;flex-direction:column;min-width:0}
+.fmenu-item-name{font-size:14px;font-weight:600}
+.fmenu-item-alert{font-size:12px;color:var(--muted)}
+.fmenu-item-alert.has{color:#9b2320}
+.fmenu-empty{padding:10px}
+.calm-box{border-left:4px solid #0ca30c!important}

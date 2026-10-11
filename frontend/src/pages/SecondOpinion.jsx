@@ -124,6 +124,7 @@ export default function SecondOpinion() {
   const { facility } = useData();
   if (!facility) return <p className="loading">Loading…</p>;
   const op = facility.opinion, why = facility.reasoning;
+  if (!op) return <Waiting facility={facility} title="I need a second opinion" />;
 
   return (
     <main className="page">
@@ -186,6 +187,35 @@ export default function SecondOpinion() {
         <Link className="btn" to="/">← Overview</Link>
         <Link className="btn btn-primary" to="/email">Email →</Link>
       </nav>
+    </main>
+  );
+}
+
+// Shown when the backend has weather data but no decision logic yet
+export function Waiting({ facility, title }) {
+  const alerts = facility.alerts || [];
+  return (
+    <main className="page">
+      <header className="page-head">
+        <h1 className="serif">{title}</h1>
+        <p className="muted">{facility.name}</p>
+      </header>
+      <section className="box">
+        <h2 className="label">Waiting on decision logic</h2>
+        <p className="prose">
+          The backend is sending live weather for this office, but no closure decision yet.
+          This page fills in automatically once the team's decision logic is connected.
+        </p>
+        <h3 className="label" style={{ marginTop: 20 }}>What the backend reports right now</h3>
+        {alerts.length === 0 ? <p className="muted">No active National Weather Service alerts for this office.</p> : (
+          <ul className="list">
+            {alerts.map((al, i) => (
+              <li key={i}><strong>{al.event}</strong> · {al.severity} · until {al.expires ? new Date(al.expires).toLocaleString([], { weekday: "short", hour: "numeric", minute: "2-digit" }) : "—"} · {al.sender}</li>
+            ))}
+          </ul>
+        )}
+        {facility.dataSources && <p className="footnote">Sources: {facility.dataSources.length} NWS requests · captured {new Date(facility.weatherCapturedAt).toLocaleString()}</p>}
+      </section>
     </main>
   );
 }

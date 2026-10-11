@@ -5,13 +5,19 @@
 - /evidence    : tamper-evident decision records in Akamai Object Storage
 - /vault       : simple evidence viewer page
 """
-import os, json
+import os, json, hashlib, threading, time
 from pathlib import Path
 from fastapi import FastAPI, HTTPException, Header, Request
 from fastapi.responses import HTMLResponse, FileResponse
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
 import evidence  # also loads .env
+
+try:  # connector to the teammates' backend (backend/connect.py -> parser/)
+    from backend.connect import build_snapshot
+except Exception as e:
+    build_snapshot = None
+    print("Teammates' backend not available:", e)
 
 app = FastAPI(title="Closure Call - Akamai backend")
 app.add_middleware(CORSMiddleware, allow_origins=["*"], allow_methods=["*"], allow_headers=["*"])
@@ -57,13 +63,66 @@ def get_record(evidence_id: str):
 
 
 # ---------- Live data for the frontend ----------
+REFRESH_SECONDS = int(os.environ.get("REFRESH_SECONDS", "600"))
+_cache = {"t": 0.0, "data": None, "busy": False}
+
+
+def _alert_fingerprint(f):
+    return hashlib.sha256(json.dumps(sorted(a.get("id") or "" for a in f.get("alerts", []))).encode()).hexdigest()
+
+
+def _refresh():
+    """Run the teammates' weather pipeline; save each office's NWS report as evidence when its alerts change."""
+    if build_snapshot is None or _cache["busy"]:
+        return []
+    _cache["busy"] = True
+    try:
+        prev = {f["id"]: _alert_fingerprint(f) for f in (_cache["data"] or {}).get("facilities", [])}
+        snap = build_snapshot()
+        _cache.update(t=time.time(), data=snap)
+        evidence._s3.put_object(Bucket=evidence._BUCKET, Key=CURRENT_KEY,
+                                Body=json.dumps(snap, default=str).encode(), ContentType="application/json")
+        ids = []
+        for f in snap["facilities"]:
+            if prev.get(f["id"]) != _alert_fingerprint(f):
+                ids.append(evidence.save_evidence(f["id"], {
+                    "captured_at": f.get("weatherCapturedAt"), "alerts": f.get("alerts", []),
+                    "data_sources": f.get("dataSources", []), "status": f.get("status")}))
+        return ids
+    finally:
+        _cache["busy"] = False
+
+
+def _refresh_quietly():
+    try:
+        _refresh()
+    except Exception as e:
+        print("Refresh failed:", e)
+
+
 @app.get("/api/current")
 def get_current():
-    try:
-        obj = evidence._s3.get_object(Bucket=evidence._BUCKET, Key=CURRENT_KEY)
-        return json.loads(obj["Body"].read())
-    except Exception:
+    if _cache["data"] is None:
+        try:  # last saved snapshot (survives restarts)
+            obj = evidence._s3.get_object(Bucket=evidence._BUCKET, Key=CURRENT_KEY)
+            _cache["data"] = json.loads(obj["Body"].read())
+        except Exception:
+            _refresh_quietly()  # first load: build it now
+    if build_snapshot and not _cache["busy"] and time.time() - _cache["t"] > REFRESH_SECONDS:
+        threading.Thread(target=_refresh_quietly, daemon=True).start()
+    if _cache["data"] is None:
         raise HTTPException(404, "No live data yet")
+    return _cache["data"]
+
+
+@app.post("/api/refresh")
+def force_refresh(x_evidence_token: str = Header(default="")):
+    """Re-run the weather check now (handy right before the demo)."""
+    check_token(x_evidence_token)
+    ids = _refresh()
+    snap = _cache["data"] or {}
+    return {"ok": True, "generated_at": snap.get("generated_at"), "new_evidence": ids,
+            "facilities": [{"name": f["name"], "alerts": len(f.get("alerts", []))} for f in snap.get("facilities", [])]}
 
 
 @app.post("/api/current")
