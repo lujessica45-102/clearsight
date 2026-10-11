@@ -119,11 +119,102 @@ export function applyEngine(fac) {
         source: "Drafted by the communications agent (AI) after the manager's decision." }
     : ruleEmail;
 
+  // ---------- Notification package: who is included / excluded and why, and channel routing ----------
+  // Groups mirror closure/agents.py recipient_groups(); the AI comms agent decides inclusion, reasons and channels.
+  const people = d.employees;
+  const GROUPS = [
+    ["essential_staff", "Essential personnel", e => e.essential, false],
+    ["telework_eligible", "Non-essential, telework-ready staff", e => !e.essential && e.telework_eligible, false],
+    ["onsite_nonessential_no_telework", "Non-essential staff who cannot telework", e => !e.essential && !e.telework_eligible, false],
+    ["commute_high_risk", "High-risk commute (overlay)", e => e.commute_risk === "high", true],
+    ["commute_elevated_risk", "Elevated-risk commute (overlay)", e => e.commute_risk === "elevated", true],
+    ["accessibility_support", "Accessibility needs (overlay)", e => e.accessibility_need, true],
+    ["no_or_low_exposure", "No or low commute exposure (overlay)", e => e.commute_risk === "none" || e.commute_risk === "low", true],
+  ].map(([id, label, f, overlay]) => ({ id, label, overlay, count: people.filter(f).length }));
+  const G = Object.fromEntries(GROUPS.map(g => [g.id, g]));
+
+  let notify;
+  if (nt) {
+    notify = {
+      source: "ai",
+      included: nt.group_plans.map(g => ({ id: g.group_id, label: G[g.group_id]?.label || g.group_id, count: g.count, why: g.why_included, instruction: g.instruction, channels: g.channels })),
+      excluded: nt.excluded.map(g => ({ id: g.group_id, label: G[g.group_id]?.label || g.group_id, count: g.count, why: g.why_excluded })),
+      channelSummary: nt.channel_recommendation, specific: nt.employee_specific_instructions,
+      audit: nt.audit_explanation, followUps: nt.follow_up_actions, record: d.notifications.record,
+    };
+  } else {
+    // Rule-based draft until the AI agent has been run
+    const act = posture !== "normal";
+    const inc = [], exc = [];
+    const add = (id, why, instruction, channels) => G[id].count && inc.push({ ...G[id], why, instruction, channels });
+    const skip = (id, why) => G[id].count && exc.push({ ...G[id], why });
+    add("essential_staff", act ? "Coverage must be confirmed before anyone is released or told to stay home." : "Everyone gets the daily status.",
+        act ? "Do not drive while the warning is in effect; supervisor will call with the coverage plan." : "Report as normal.",
+        act ? ["Email", "Supervisor phone call"] : ["Email"]);
+    add("telework_eligible", "Part of the all-staff announcement; their work can continue remotely.",
+        act ? (posture === "delayed_arrival" ? "Start remotely until the all-clear." : "Telework today if it is safe to do so.") : "Report as normal.", ["Email"]);
+    add("onsite_nonessential_no_telework", "Part of the all-staff announcement; they need to know whether to travel.",
+        act ? (posture === "closure" ? "Stay home; absence is excused." : posture === "telework" ? "Do not travel; unscheduled leave is approved." : "Wait for the all-clear before leaving home.") : "Report as normal.", ["Email"]);
+    if (act) {
+      add("commute_high_risk", "Their home or route is inside a warning-level hazard, so email alone may not reach them in time.", "Do not travel; confirm you received this.", ["Text message (SMS)"]);
+      add("commute_elevated_risk", "Their commute crosses a hazard area; a second channel makes sure they see it.", "Avoid travel until the all-clear.", ["Text message (SMS)"]);
+      add("accessibility_support", "May need transport or individual help to stay safe.", "Supervisor will check in with you individually.", ["Supervisor phone call"]);
+      skip("no_or_low_exposure", "Already covered by the all-staff email; no extra outreach needed because their commute is not exposed.");
+    } else {
+      ["commute_high_risk", "commute_elevated_risk", "accessibility_support"].forEach(id => skip(id, "No warning covers this office, so no extra outreach is needed."));
+    }
+    notify = {
+      source: "rules", included: inc, excluded: exc,
+      channelSummary: act
+        ? "Email to all staff; text message to anyone with an exposed commute; supervisor phone calls to essential staff and anyone needing accessibility support; update the office phone line and website for customers."
+        : "One all-staff email. No extra channels needed.",
+      specific: [], audit: null, followUps: act ? ["Confirm every high-risk employee has acknowledged the text.", "Recheck the warnings before the next operating day."] : [],
+    };
+  }
+
+  // ---------- One tailored email per included group ----------
+  const PRED = {
+    essential_staff: e => e.essential, telework_eligible: e => !e.essential && e.telework_eligible,
+    onsite_nonessential_no_telework: e => !e.essential && !e.telework_eligible,
+    commute_high_risk: e => e.commute_risk === "high", commute_elevated_risk: e => e.commute_risk === "elevated",
+    accessibility_support: e => e.accessibility_need, no_or_low_exposure: e => e.commute_risk === "none" || e.commute_risk === "low",
+  };
+  const hazardText = hazards.length ? hazards.join(" and ") : "the current weather warnings";
+  const statusLine = posture === "normal"
+    ? `${fac.name} is open as normal on ${when}. No National Weather Service warning covers the office or your commute right now.`
+    : `Because of the ${hazardText} covering our area, ${fac.name} will operate as: ${labels[posture]} on ${when}.`;
+  const EXTRA = {
+    essential_staff: "Your supervisor will call you this morning to confirm the coverage plan. Please keep your phone on and do not drive while the warning is in effect.",
+    telework_eligible: "Log in at your normal start time and let your supervisor know you are online. If you lose power or internet, tell your supervisor and take leave as needed.",
+    onsite_nonessential_no_telework: posture === "closure" ? "You do not need to request leave; your absence is excused while the office is closed." : posture === "normal" ? "" : "Unscheduled leave is approved for today. Do not put yourself at risk to get to the office.",
+    commute_high_risk: `Your home or your route to the office is inside the area covered by the ${hazardText}. Please reply "received" (or text back) so we know you got this.`,
+    commute_elevated_risk: `Your commute crosses an area affected by the ${hazardText}. Please reply "received" so we know you got this.`,
+    accessibility_support: "Your supervisor will call you individually to check whether you need transport or any other help to stay safe.",
+    no_or_low_exposure: "Your commute is not in the warned area, but please stay alert to changing conditions.",
+  };
+  const SHORT = { essential_staff: "essential staff", telework_eligible: "telework-ready staff", onsite_nonessential_no_telework: "on-site staff",
+    commute_high_risk: "high-risk commutes", commute_elevated_risk: "elevated-risk commutes", accessibility_support: "accessibility support", no_or_low_exposure: "low-exposure staff" };
+  const AUD = { essential_staff: "essential personnel", telework_eligible: "staff who are set up to telework",
+    onsite_nonessential_no_telework: "staff whose work has to be done on site", commute_high_risk: "employees whose home or commute is inside the warned area",
+    commute_elevated_risk: "employees whose commute crosses a hazard area", accessibility_support: "employees who may need extra support to stay safe",
+    no_or_low_exposure: "employees whose commute is outside the warned area" };
+  const groupEmail = g => ({
+    subject: `${fac.name}: ${labels[posture]} on ${when} (${SHORT[g.id] || g.label})`,
+    body:
+      `Hello,\n\nThis message is for ${AUD[g.id] || "you"}.\n\n` +
+      `${statusLine}\n\nWhat you need to do: ${g.instruction}\n\n` +
+      (EXTRA[g.id] ? `${EXTRA[g.id]}\n\n` : "") +
+      `If you are ever unsafe where you are, contact local emergency services first, then let your supervisor know.\n\n` +
+      `Questions: reply to this email or call [office phone number].\n\nThank you,\n[Manager name]\n${fac.name}`,
+  });
+  if (nt) notify.allStaff = { subject: nt.email.subject, body: nt.email.body };
+  notify.included = notify.included.map(g => ({ ...g, members: people.filter(PRED[g.id] || (() => false)).map(e => e.id), email: groupEmail(g) }));
+
   return {
     fac: {
       ...fac, status: STATUS_OF[posture], total: m.workforce, affected: affectedN,
       bullets: [...fac.bullets.slice(0, 1), `Recommendation: ${labels[posture]}${so ? " (rule engine + AI second opinion)" : " (rule engine)"}`, ...fac.bullets.slice(1)],
-      opinion, reasoning, email, engine: d,
+      opinion, reasoning, email, notify, engine: d,
     },
     employees,
   };
