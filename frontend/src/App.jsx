@@ -52,7 +52,7 @@ function DataBadge() {
     ? new Date(data.generated_at).toLocaleTimeString([], { hour: "numeric", minute: "2-digit" }) : "";
   return (
     <span className={`data-badge ${live ? "live" : ""}`}>
-      <span className="dot" aria-hidden="true" />{live ? `Live NWS data · updated ${when}` : "Sample scenario"}
+      <span className="dot" aria-hidden="true" />{live ? `Live NWS data · updated ${when}` : data.scenario ? `Replay · ${data.scenario.label.split(" - ")[0]}` : "Sample scenario"}
     </span>
   );
 }

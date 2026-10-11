@@ -1,14 +1,14 @@
 """Connects the teammates' backend (parser/) to the React frontend.
 
 All weather and facility data comes from the teammates' code:
-  - parser.facilities.FacilityStore / geocode_address  -> the offices
+  - parser.facility_cleaning.facilities.FacilityStore / geocode_address  -> the offices
   - parser.nws_client.build_weather_report             -> live NWS alerts, forecast, observation
 This file only RESHAPES that data into the format the frontend reads (see MOCK in
 frontend/src/data.js). It makes no closure decisions: the decision fields are left
 empty until the team's decision logic exists.
 
 Commands (run from the repo root):
-  python -m backend.connect --seed 6     load + geocode the first 6 offices from parser/facilities.db
+  python -m backend.connect --seed 6     load + geocode the first 6 offices from parser/facilities.sql
   python -m backend.connect              print a summary of the live snapshot
   python -m backend.connect --json       print the full snapshot
 """
@@ -19,11 +19,11 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(ROOT))
 
-from parser.facilities import FacilityStore, geocode_address   # teammates' code
+from parser.facility_cleaning.facilities import FacilityStore, geocode_address   # teammates' code
 from parser.nws_client import build_weather_report             # teammates' code
 
 DB_PATH = os.getenv("FACILITIES_DATABASE", str(ROOT / "facilities.db"))
-SEED_SQL = ROOT / "parser" / "facilities.db"   # the teammates' list of Florida offices (SQL text)
+SEED_SQL = ROOT / "parser" / "facilities.sql"  # the teammates' list of 25 Florida offices
 LIMIT = int(os.getenv("LIVE_FACILITY_LIMIT", "100"))  # show every facility in the database
 
 # Teammates' operating statuses -> the frontend's status names
