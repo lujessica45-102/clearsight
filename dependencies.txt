@@ -7,6 +7,8 @@ mediapipe
    uvicorn
    requests
    strands-agents
+do this--> pip install boto3 python-dotenv fastapi uvicorn requests strands-agents
+
 # Closure Call settings template.
 # Copy this file to ".env" and fill in the blanks. NEVER commit the real .env.
 # Ask the Akamai owner (me) for any values you don't have. Send keys by DM only.
