@@ -137,6 +137,15 @@ def evaluate(facility, picture, impact, roads, as_of=None):
         rules.append(_rule("R7", "Verified road closures near facility", "full road closures within radius", None, None, "n/a",
                            None, None, f"NOT EVALUATED: {roads['reason']}", "Commute safety is inferred from weather-alert geometry only."))
 
+    # R8 fire weather over the facility: ACTION-ONLY (never changes the posture)
+    fire = [a for a in fac_alerts if a["hazard_class"] == "fire"]
+    rules.append(_rule("R8", "Fire-weather alert over facility", "fire-weather alerts (Red Flag Warning / Fire Weather Watch / Fire Warning) covering facility",
+                       len(fire), 1, ">=", bool(fire), None,
+                       "NWS fire-weather products describe dangerous burning CONDITIONS, not an actual fire. Action-only rule, no posture change. " + ASSUMPTION,
+                       "Fire weather rarely closes an office by itself, but sites should prepare and field work with ignition risk should stop."))
+    if fire:
+        actions.append(f"FIRE WEATHER ({', '.join(sorted({a['event'] for a in fire}))}): " + sector["fire_actions"])
+
     # choose posture
     fired = [r for r in rules if r["fired"] and r["posture_if_fired"]]
     posture, binding = "normal", None
@@ -180,9 +189,12 @@ def evaluate(facility, picture, impact, roads, as_of=None):
         cert = top.get("certainty") or "certainty not in archive"
         urg = top.get("urgency") or "urgency not in archive"
         factors.append(f"+ Top hazard '{top['event']}' ({cert}, {urg}).")
-    if picture["mode"] == "replay" and not picture["alerts"]:
+    if picture["mode"] in ("recent", "archive") and not picture["alerts"]:
         score -= 1
-        factors.append("- Archived NWS alerts end here; post-event damage, power and road conditions are NOT represented, so 'no alerts' does not mean 'safe to reopen'.")
+        factors.append("- Only archived NWS alerts are represented; damage, power, road and wildfire conditions are NOT, so 'no alerts' does not mean 'safe'.")
+    if any(a["hazard_class"] == "fire" for a in picture["alerts"]):
+        score -= 0.5
+        factors.append("- Wildfire evacuation orders, fire perimeters and smoke closures are NOT in NWS alert data; a fire-weather alert signals dangerous conditions, not a confirmed fire.")
     if roads["status"] != "ok" and (travel_alerts or fac_alerts):
         score -= 1; factors.append("- Road closure data unavailable; commute risk inferred from alert geometry only.")
     if "county_zone" in impact["geometry_kinds"]:

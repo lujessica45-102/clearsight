@@ -1,12 +1,9 @@
-// Turns the saved output of the team's decision engine (closure/, run by backend/decide.py)
+// Turns the decision engine's result for one office (the `engine` object the backend attaches to each facility)
 // into the shapes the Overview, Second opinion and Email pages already display.
-import DECISIONS from "./decisions.json";
 
 const STATUS_OF = { closure: "closed", telework: "telework", delayed_arrival: "delay", early_dismissal: "delay", normal: "normal" };
 const SEV_OF = { closure: "red", telework: "yellow", delayed_arrival: "yellow", early_dismissal: "yellow", normal: "green" };
 const GROUP_OF = e => e.essential ? "essential_staff" : e.telework_eligible ? "telework_eligible" : "onsite_nonessential_no_telework";
-
-export const DECISION_META = DECISIONS;
 
 function localTime(iso, tz) {
   try {
@@ -14,10 +11,12 @@ function localTime(iso, tz) {
   } catch { return iso; }
 }
 
-export function applyEngine(fac) {
-  const d = DECISIONS.facilities?.[fac.id];
+// ctx = { postures, chainVerified, mode } from the API payload
+export function applyEngine(fac, ctx = {}) {
+  const d = fac.engine;
   if (!d) return { fac, employees: [] };
-  const det = d.deterministic, m = d.metrics, labels = DECISIONS.postures;
+  const det = d.deterministic, m = d.metrics, labels = ctx.postures || {};
+  const archived = ctx.mode && ctx.mode !== "live";
   const so = d.second_opinion?.status === "ok" ? d.second_opinion : null;
   const op2 = so?.second_opinion, fin = so?.final_ai_recommendation;
   const nt = d.notifications?.status === "ok" ? d.notifications.plan : null;
@@ -48,17 +47,17 @@ export function applyEngine(fac) {
     explanation: op2?.reasoning || det.justification,
     sectors, sectorsLabel: "Who weighed in",
     sectorsNote: so ? "The rule engine sets a safety floor; the AI agents can raise the call but cannot quietly lower it."
-                    : "AI second opinion not generated yet. Run python -m backend.decide with the AWS key.",
+                    : "AI second opinion was not run for this moment. The rule engine's result above is complete.",
   };
 
   const reasoning = {
     confidence: det.confidence.level,
     checkedAt: localTime(det.as_of, tz),
     path: [
-      { id: "nws", source: `${d.alerts.length} archived National Weather Service alerts` },
+      { id: "nws", source: `${d.alerts.length} ${archived ? "archived" : "current"} National Weather Service alert${d.alerts.length === 1 ? "" : "s"}` },
       { id: "emp", source: `${m.workforce} employees' commutes (synthetic)` },
       { id: "sector", source: "Service-center sector policy" },
-      { id: "roads", source: d.roads.status === "ok" ? "Road closures" : "Road closures: not available in the archive" },
+      { id: "roads", source: d.roads.status === "ok" ? "Road closures" : "Road closures: not available (no traffic data for this moment)" },
       ...(so ? [{ id: "ai", source: "3 AI agents (hazard, impact, decision)" }] : []),
     ],
     rules: det.rules, labels,
@@ -67,7 +66,7 @@ export function applyEngine(fac) {
     whyThreshold: binding?.why_this_threshold,
     wouldChange: op2?.what_would_change?.length ? op2.what_would_change : det.sensitivity.map(s => `${s.change} → ${labels[s.would_recommend] || s.would_recommend}`),
     alternatives: det.alternatives_considered,
-    record: { id: d.evaluation_id, sha: d.record?.sha256, verified: DECISIONS.chain_verified },
+    record: { id: d.evaluation_id, sha: d.record?.sha256, verified: ctx.chainVerified },
   };
 
   // Per-employee instructions: from the AI communications plan when it exists, otherwise from the decision (OPM wording)
@@ -94,7 +93,8 @@ export function applyEngine(fac) {
 
   // The email: the AI communications agent's draft if it was generated, otherwise drafted from the decision
   const when = new Date(det.as_of).toLocaleDateString("en-US", { timeZone: tz, weekday: "long", month: "long", day: "numeric" });
-  const hazards = d.alerts.filter(a => a.covers_facility).map(a => a.event);
+  const hazards = [...new Set(d.alerts.filter(a => a.covers_facility).map(a => a.event))];
+  const watching = [...new Set(d.alerts.filter(a => !a.covers_facility).map(a => a.event))].slice(0, 2);
   const playbook = det.sector_playbook[posture];
   const ess = d.employees.filter(e => e.essential).length;
   const ruleEmail = {
@@ -102,7 +102,7 @@ export function applyEngine(fac) {
     body:
       `Hello ${fac.name} team,\n\n` +
       (posture === "normal"
-        ? `${fac.name} is open as normal on ${when}. No National Weather Service warning covers the office or your commutes right now. We are monitoring Hurricane Michael and will update you if that changes.\n\n`
+        ? `${fac.name} is open as normal on ${when}. No National Weather Service warning covers the office or your commutes right now. We are monitoring ${watching.length ? watching.join(" and ") : "conditions"} and will update you if that changes.\n\n`
         : `Because of ${hazards.length ? hazards.join(" and ") : "the weather warnings"} covering our area, ${fac.name} will operate as: ${labels[posture]} on ${when}.\n\n`) +
       (posture === "normal" ? "" :
         `What this means for you:\n` +

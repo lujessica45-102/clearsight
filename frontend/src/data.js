@@ -1,10 +1,7 @@
-import { SCENARIO, FLORIDA_FACILITIES } from "./floridaFacilities.js";
 import { applyEngine } from "./engineAdapter.js";
 
-// Each office + the decision engine's saved results for it (if it was evaluated)
-const ENGINE = FLORIDA_FACILITIES.map(applyEngine);
-
-export const API = "http://172.236.108.63";
+// Same-origin by default (the Vite dev server proxies /api to the backend); set VITE_API_URL to point elsewhere.
+export const API = import.meta.env.VITE_API_URL ?? "";
 
 export const HAZARD_ICONS = {
   tornado: "🌪️", fire: "🔥", wildfire: "🔥", earthquake: "🌎", flood: "🌊",
@@ -37,35 +34,43 @@ export function instructionFor(emp, facility) {
   return emp.teleworkOk ? "Do not come in: telework" : "Do not come in: excused";
 }
 
-// ---------------- Teammate's data: 25 Florida offices + Hurricane Michael replay ----------------
-// Built from parser/facilities.sql and closure/replay/michael_2018.json (see floridaFacilities.js)
-export const MOCK = {
-  mode: "replay",
-  scenario: SCENARIO,
-  alert: {
-    type: "hurricane",
-    title: "Hurricane Michael",
-    area: "Florida Panhandle",
-    expires: "end time not in NWS archive",
-    source: "National Weather Service (archived)",
-    polygon: null,
-  },
-  facilities: ENGINE.map(x => x.fac),
-  employees: ENGINE.flatMap(x => x.employees),
-};
-
-// Live data from the backend; falls back to sample data if it's not ready
-export async function getCurrent() {
-  // Add ?demo to the address to show the Hurricane Michael replay instead of live data
-  if (new URLSearchParams(window.location.search).has("demo")) return MOCK;
-  try {
-    const r = await fetch(API + "/api/current");
-    if (!r.ok) throw new Error();
-    return await r.json();
-  } catch {
-    return MOCK;
-  }
+// ---------------- Data from the backend (always queried, never stored in the app) ----------------
+export class ApiError extends Error {
+  constructor(message, status) { super(message); this.status = status; }
 }
+
+const detailText = d => (typeof d === "string" ? d : d ? JSON.stringify(d) : "");
+
+async function getJson(path) {
+  let r;
+  try {
+    r = await fetch(`${API}${path}`, { headers: { Accept: "application/json" } });
+  } catch {
+    throw new ApiError("Can't reach the data service.", 0);
+  }
+  if (r.status === 400) {
+    const b = await r.json().catch(() => ({}));
+    throw new ApiError(detailText(b.detail) || "That time can't be used.", 400);
+  }
+  if ([502, 503, 504].includes(r.status)) throw new ApiError(`Can't reach the data service (HTTP ${r.status}).`, r.status);
+  if (!r.ok) throw new ApiError(`The data service returned an error (HTTP ${r.status}).`, r.status);
+  try { return await r.json(); } catch { throw new ApiError("The data service sent a response we couldn't read.", r.status); }
+}
+
+// asOf: ISO-8601 UTC instant, or null for live. Adds the decision-engine view (status, advice, email, employees) to each office.
+export async function getCurrent(asOf) {
+  const p = await getJson(`/api/current${asOf ? `?asof=${encodeURIComponent(asOf)}` : ""}`);
+  const ctx = { postures: p.postures || {}, chainVerified: p.chain_verified, mode: p.mode };
+  const done = (p.facilities || []).map(f => applyEngine(f, ctx));
+  return { ...p, facilities: done.map(d => d.fac), employees: done.flatMap(d => d.employees) };
+}
+
+// Ready-made places and times to jump to (just a place + a timestamp; the weather is still fetched live)
+export async function getMoments() {
+  try { return (await getJson("/api/moments")).moments || []; } catch { return []; }
+}
+
+export const STATE_NAMES = { FL: "Florida", CA: "California", NE: "Nebraska" };
 
 // "12 of 14" when the backend knows employee counts, otherwise a dash
 export const affectedText = f => (f.affected == null || f.total == null ? "—" : `${f.affected} of ${f.total}`);

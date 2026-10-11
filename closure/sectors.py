@@ -6,6 +6,7 @@ The brief says sectors are not yet defined in the repo, so these are a configura
 
 SECTORS = {
     "service_center": {
+        "fire_actions": 'Review the office evacuation plan and routes, keep go-bags and the staff call list current, brief lobby staff, and monitor fire-weather and local emergency alerts.',
         "label": "Service Centers",
         "description": "Public-facing county offices (e.g. FSA/NRCS/RD style) serving walk-in customers.",
         "public_facing": True,
@@ -23,6 +24,7 @@ SECTORS = {
         },
     },
     "research_lab": {
+        "fire_actions": 'Secure ignition sources (open flames, heaters, equipment), review lab and greenhouse emergency plans and animal/specimen shut-down steps, check backup power, and monitor alerts.',
         "label": "Research Labs & Stations",
         "description": "Labs and research stations with animals, plants, cold storage or experiments that cannot be left unattended.",
         "public_facing": False,
@@ -40,6 +42,7 @@ SECTORS = {
         },
     },
     "field_office": {
+        "fire_actions": 'Suspend ignition-risk field work and off-road vehicle operations, keep vehicles on cleared roads, confirm crew check-in times and review evacuation routes.',
         "label": "Field Offices",
         "description": "Field-operations offices (inspection, wildlife, forestry-style) whose staff work outdoors or on the road.",
         "public_facing": False,
@@ -57,6 +60,7 @@ SECTORS = {
         },
     },
     "headquarters": {
+        "fire_actions": 'Review the building evacuation plan and routes, confirm continuity-of-operations contacts, remind staff to keep go-bags ready, and monitor alerts.',
         "label": "Headquarters & Administrative",
         "description": "Large administrative/regional headquarters with high telework capability and continuity-of-operations duties.",
         "public_facing": False,

@@ -7,8 +7,9 @@ import sys
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent.parent
-DATA_DIR = Path(__file__).resolve().parent / "data"
-REPLAY_DIR = Path(__file__).resolve().parent / "replay"
+# Default OUTSIDE ~/Desktop: iCloud-synced folders caused SQLite "disk I/O error" on the decision log.
+DATA_DIR = Path(os.getenv("CLEARSIGHT_DATA_DIR") or Path.home() / ".clearsight")
+DATA_DIR.mkdir(parents=True, exist_ok=True)
 
 # The team's existing NWS client / facility store live in <repo>/parser.
 if str(ROOT) not in sys.path:
