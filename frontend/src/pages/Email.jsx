@@ -71,7 +71,7 @@ export default function Email() {
           </table>
           <p className="footnote">
             {employees.length - affected.length} unaffected employee{employees.length - affected.length === 1 ? "" : "s"} not listed.
-            Each decision is saved to the <a href={API} target="_blank" rel="noreferrer">evidence vault on Akamai</a>.
+            Each decision is saved to the <a href={`${API}/vault`} target="_blank" rel="noreferrer">evidence vault on Akamai</a>.
           </p>
         </section>
       </div>
