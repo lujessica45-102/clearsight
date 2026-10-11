@@ -211,3 +211,5 @@ _output/
 _scratch/
 
 node_modules/
+# ClearSight runtime data (local decision log / seeded facilities)
+closure/data/*.db

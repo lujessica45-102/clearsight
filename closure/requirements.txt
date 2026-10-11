@@ -1,0 +1,10 @@
+# ClearSight backend (Python 3.12 recommended; 3.14 caused import stalls from a synced ~/Desktop folder)
+strands-agents[openai]==1.59.0
+botocore[crt]
+boto3
+fastapi
+uvicorn
+requests
+python-dotenv
+shapely
+pytest
