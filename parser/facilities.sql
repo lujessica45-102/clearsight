@@ -7,7 +7,7 @@ INSERT OR IGNORE INTO public_facilities (
     'Florida NRCS State Office', 'USDA NRCS',
     '4500 NW 27th Avenue, Building A, Gainesville, FL 32606',
     '(352) 338-9500', 'Florida statewide',
-    NULL, NULL, 'open', 'open',
+    29.67756, -82.3921, 'open', 'open',
     'Florida NRCS/FSA Service Center Contact List',
     'https://www.nrcs.usda.gov/sites/default/files/2024-08/Florida-NRCS-FSA-Service-Center-Contact-List-FINAL-FINAL_Aug2024.pdf',
     '2024-06-21'
@@ -16,7 +16,7 @@ INSERT OR IGNORE INTO public_facilities (
     'Gainesville Service Center', 'USDA NRCS',
     '5709 NW 13th Street, Gainesville, FL 32653',
     '(352) 376-7414', 'Alachua; Bradford',
-    NULL, NULL, 'open', 'open',
+    29.7069306, -82.3459110, 'open', 'open',
     'Florida NRCS/FSA Service Center Contact List',
     'https://www.nrcs.usda.gov/sites/default/files/2024-08/Florida-NRCS-FSA-Service-Center-Contact-List-FINAL-FINAL_Aug2024.pdf',
     '2024-06-21'
