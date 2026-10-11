@@ -10,10 +10,18 @@ Each decision is hash-chained (sha256 of previous hash + record), like closure/s
 """
 import hashlib, json, sys
 from datetime import datetime, timezone
-from backend.decide import ROOT, evaluate as _unused, synthetic_employees, to_engine_facility  # noqa: F401
-from closure import hazards, engine, roads, synthetic
-from closure import impact as impact_mod
-from closure.sectors import POSTURE_LABELS
+from pathlib import Path
+ROOT = Path(__file__).resolve().parent.parent
+try:
+    from backend.engine_adapter import synthetic_employees, to_engine_facility  # noqa: F401
+except Exception:
+    pass
+try:
+    from closure import hazards, engine, roads, synthetic
+    from closure import impact as impact_mod
+    from closure.sectors import POSTURE_LABELS
+except Exception:
+    pass
 
 STORMS = [("michael_2018", "Hurricane Michael 2018"), ("nebraska_2019", "Nebraska floods 2019")]
 NOT_COVERED = "No warning over the office"
@@ -70,12 +78,17 @@ def build():
 
 
 def main():
-    records = build()
-    index = {"generated_at": datetime.now(timezone.utc).isoformat(), "count": len(records),
-             "chain": "sha256(previous sha256 + canonical JSON of the record)", "records": records, "storage": None}
+    saved = ROOT / "frontend" / "src" / "history.json"
+    replays_present = all((ROOT / "closure" / "replay" / f"{st}.json").exists() for st, _ in STORMS)
+    if replays_present and "--rebuild" in sys.argv:
+        records = build()
+        index = {"generated_at": datetime.now(timezone.utc).isoformat(), "count": len(records),
+                 "chain": "sha256(previous sha256 + canonical JSON of the record)", "records": records, "storage": None}
+    else:   # the archived replays were removed from the repo: upload the saved, already hash-chained history
+        index = json.load(open(saved))
     if "--upload" in sys.argv:
         import evidence   # Akamai Object Storage client (loads .env)
-        for r in records:
+        for r in index["records"]:
             evidence._s3.put_object(Bucket=evidence._BUCKET, Key=f"history/{r['case_id']}.json",
                                     Body=json.dumps(r, indent=1).encode(), ContentType="application/json")
         index["storage"] = {"provider": "Akamai Object Storage", "bucket": evidence._BUCKET,
@@ -83,14 +96,8 @@ def main():
                             "uploaded_at": datetime.now(timezone.utc).isoformat()}
         evidence._s3.put_object(Bucket=evidence._BUCKET, Key="history/index.json",
                                 Body=json.dumps(index).encode(), ContentType="application/json")
-        print(f"Uploaded {len(records)} records + index to {evidence._BUCKET}/history/")
-    json.dump(index, open(ROOT / "frontend" / "src" / "history.json", "w"))
-    by = {}
-    for r in records:
-        by.setdefault(r["hazard"], {}).setdefault(r["posture"], 0)
-        by[r["hazard"]][r["posture"]] += 1
-    for h, c in by.items():
-        print(f"{h:32} {c}")
+        print(f"Uploaded {index['count']} records + index to {evidence._BUCKET}/history/")
+    json.dump(index, open(saved, "w"))
 
 
 if __name__ == "__main__":

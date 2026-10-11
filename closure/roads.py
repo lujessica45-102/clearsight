@@ -17,9 +17,12 @@ _ENDPOINTS = {
 
 def road_conditions(facility, mode, radius_km=60):
     state = facility["state"]
+    if state not in _ENDPOINTS:
+        return {"status": "unavailable", "source": f"{state} 511 (no integration)", "events": [],
+                "reason": f"No 511 road-conditions integration exists for {state}; road closures were NOT evaluated."}
     base = {"status": "unavailable", "source": _ENDPOINTS[state][2], "events": [], "reason": None}
-    if mode == "replay":
-        base["reason"] = "No archived 511 road data is available for this historical scenario."
+    if mode in ("recent", "archive", "replay"):
+        base["reason"] = "No archived 511 road data is available for a past moment."
         return base
     url, key_fn, name = _ENDPOINTS[state]
     key = key_fn()

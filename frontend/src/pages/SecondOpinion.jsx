@@ -314,7 +314,7 @@ export default function SecondOpinion() {
         </section>
       )}
 
-      {why?.rules && <PastDecisions facilityId={facility.id} />}
+      {why?.rules && <PastDecisions facilityId={facility.id} hazard={facility.alert?.title} posture={facility.engine?.deterministic?.posture} />}
 
       <nav className="page-buttons">
         <Link className="btn" to="/">← Overview</Link>
@@ -334,12 +334,12 @@ export function Waiting({ facility, title }) {
         <p className="muted">{facility.name}</p>
       </header>
       <section className="box">
-        <h2 className="label">Waiting on decision logic</h2>
+        <h2 className="label">No decision analysis for this office</h2>
         <p className="prose">
-          The backend is sending live weather for this office, but no closure decision yet.
-          This page fills in automatically once the team's decision logic is connected.
+          The data service returned weather for this office at this moment, but the decision engine has no result for it.
+          Try another office or another time.
         </p>
-        <h3 className="label" style={{ marginTop: 20 }}>What the backend reports right now</h3>
+        <h3 className="label" style={{ marginTop: 20 }}>What the National Weather Service reports for this moment</h3>
         {alerts.length === 0 ? <p className="muted">No active National Weather Service alerts for this office.</p> : (
           <ul className="list">
             {alerts.map((al, i) => (

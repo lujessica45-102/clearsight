@@ -10,7 +10,7 @@ const ORDER = ["closure", "early_dismissal", "telework", "delayed_arrival", "nor
 const color = p => STATUS[STATUS_OF[p]].color;
 const short = s => (s ? `${s.slice(0, 8)}…` : "—");
 
-export default function PastDecisions({ facilityId, storm = "michael_2018", moment = 2 }) {
+export default function PastDecisions({ facilityId, hazard: hazardNow, posture: postureNow, storm = "michael_2018", moment = 2 }) {
   const [hist, setHist] = useState(SAVED);
   const [live, setLive] = useState(false);
   const [hover, setHover] = useState(null);
@@ -21,13 +21,13 @@ export default function PastDecisions({ facilityId, storm = "michael_2018", mome
 
   const recs = hist.records;
   const current = recs.find(r => r.facility_id === facilityId && r.storm === storm && r.moment === moment);
-  const hazard = current?.hazard;
+  const hazard = current?.hazard || hazardNow || "No warning over the office";
   const similar = useMemo(() => recs.filter(r => r.hazard === hazard && r !== current), [recs, hazard, current]);
-  if (!current) return null;
+  const today = current || { case_id: "today", posture: postureNow || null };
 
   const counts = ORDER.map(p => ({ p, n: similar.filter(r => r.posture === p).length })).filter(x => x.n);
   const top = counts.slice().sort((a, b) => b.n - a.n)[0];
-  const same = similar.filter(r => r.posture === current.posture).length;
+  const same = similar.filter(r => r.posture === today.posture).length;
 
   // Dot strip: one column per archived moment, one dot per similar past case (beeswarm stacked)
   const storms = [...new Set(recs.map(r => r.storm))];
@@ -36,7 +36,7 @@ export default function PastDecisions({ facilityId, storm = "michael_2018", mome
   const W = 760, colW = W / cols.length, R = 6, GAP = 15, PER_ROW = Math.max(1, Math.floor((colW - 16) / GAP));
   const placed = [];
   cols.forEach((c, ci) => {
-    const here = [...similar.filter(r => r.storm === c.s && r.moment === c.m), ...(current.storm === c.s && current.moment === c.m ? [current] : [])]
+    const here = [...similar.filter(r => r.storm === c.s && r.moment === c.m), ...(current && current.storm === c.s && current.moment === c.m ? [current] : [])]
       .sort((a, b) => ORDER.indexOf(a.posture) - ORDER.indexOf(b.posture));
     here.forEach((r, k) => placed.push({ r, x: ci * colW + colW / 2 + ((k % PER_ROW) - (Math.min(here.length, PER_ROW) - 1) / 2) * GAP, row: Math.floor(k / PER_ROW) }));
   });
@@ -45,8 +45,9 @@ export default function PastDecisions({ facilityId, storm = "michael_2018", mome
   const y = row => H - 56 - row * GAP;
 
   // Chain: the current record and the three stored just before it
-  const idx = recs.indexOf(current);
-  const chain = recs.slice(Math.max(0, idx - 3), idx + 1);
+  const anchor = current || similar[similar.length - 1];
+  const idx = anchor ? recs.indexOf(anchor) : -1;
+  const chain = idx >= 0 ? recs.slice(Math.max(0, idx - 3), idx + 1) : [];
   const store = hist.storage;
 
   return (
@@ -64,7 +65,7 @@ export default function PastDecisions({ facilityId, storm = "michael_2018", mome
             <p className="past-stat serif"><span>{top.n} of {similar.length}</span> past cases → {SHORT[top.p]}</p>
           ) : <p className="past-stat serif">No past cases match yet</p>}
           <p className="muted small">
-            {similar.length ? (same === similar.length ? "Today's call matches every past case." : `Today's call (${SHORT[current.posture]}) matches ${same} of ${similar.length}.`) : ""}
+            {similar.length && today.posture ? (same === similar.length ? "Today's call matches every past case." : `Today's call (${SHORT[today.posture]}) matches ${same} of ${similar.length}.`) : ""}
           </p>
         </div>
         {similar.length > 0 && (
@@ -115,7 +116,7 @@ export default function PastDecisions({ facilityId, storm = "michael_2018", mome
           </div>
         )}
         <div className="past-legend">
-          {ORDER.filter(p => similar.some(r => r.posture === p) || current.posture === p).map(p => (
+          {ORDER.filter(p => similar.some(r => r.posture === p) || today.posture === p).map(p => (
             <span key={p}><i style={{ background: color(p) }} /> {SHORT[p]}</span>
           ))}
           <span><i className="ring" /> Today's decision</span>

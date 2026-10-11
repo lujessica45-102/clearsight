@@ -17,7 +17,7 @@ from .sectors import SECTORS, POSTURE_LABELS, POSTURE_RANK
 from strands_evidence import EvidenceRecorder  # team's hook: records every tool call an agent makes
 
 
-HINDSIGHT = "If mode is 'replay', reason ONLY from information available at as_of; never use hindsight or your own knowledge of what happened afterwards (landfall time, final intensity, damage). "
+HINDSIGHT = "If mode is 'recent' or 'archive' (a past moment), reason ONLY from information available at as_of; never use hindsight or your own knowledge of what happened afterwards (landfall time, final intensity, damage). "
 
 
 def _model(fast=False):
@@ -64,7 +64,7 @@ def _hazard_agent(ctx, rec):
 
     @tool
     def get_active_alerts() -> list:
-        """All verified NWS alerts relevant to this facility region (live) or archived alerts in effect at the replay time. Includes severity, urgency, certainty, times and whether each covers the facility."""
+        """All verified NWS alerts relevant to this facility region (live) or archived alerts in effect at the as-of time. Includes severity, urgency, certainty, times and whether each covers the facility."""
         return [_alert_view(a, covers) for a in ctx.picture["alerts"]]
 
     @tool

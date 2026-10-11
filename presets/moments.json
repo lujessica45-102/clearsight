@@ -1,0 +1,96 @@
+{
+ "description": "Bookmarks only: a place (facility ids) and a timestamp. No weather data is stored here; selecting a moment makes the app query NWS / the IEM archive live for that time. Managed by presets/find_moments.py.",
+ "moments": [
+  {
+   "id": "ca-fire-20181108-oroville",
+   "label": "California · Red Flag Warning, Butte County (Nov 2018)",
+   "asof": "2018-11-08T12:00:00Z",
+   "region": "CA",
+   "hazard": "fire",
+   "note": "Oroville service center and Butte County FSA. Decision time Thu Nov 8 2018 4:00 AM PST, before the 08:00 opening, the realistic early-morning closure call.",
+   "facility_ids": [
+    "oroville-service-center",
+    "butte-county-fsa"
+   ],
+   "verified_at": "2026-10-11T10:38:22Z"
+  },
+  {
+   "id": "ca-fire-20191024-redding",
+   "label": "California · Red Flag Warning, Shasta County (Oct 2019)",
+   "asof": "2019-10-24T11:00:00Z",
+   "region": "CA",
+   "hazard": "fire",
+   "note": "Redding service center and Shasta County FSA. Decision time Thu Oct 24 2019 4:00 AM PDT, before the 08:00 opening, the realistic early-morning closure call.",
+   "facility_ids": [
+    "redding-service-center",
+    "shasta-county-fsa"
+   ],
+   "verified_at": "2026-10-11T10:38:24Z"
+  },
+  {
+   "id": "ca-fire-20250108-arcadia",
+   "label": "California · Red Flag & High Wind Warnings, Los Angeles Area (Jan 2025)",
+   "asof": "2025-01-08T12:00:00Z",
+   "region": "CA",
+   "hazard": "fire",
+   "note": "Angeles National Forest supervisor's office, Arcadia. Decision time Wed Jan 8 2025 4:00 AM PST, before the 08:00 opening, the realistic early-morning closure call.",
+   "facility_ids": [
+    "angeles-national-forest-supervisor-s-office"
+   ],
+   "verified_at": "2026-10-11T10:38:23Z"
+  },
+  {
+   "id": "fl-tropical-20181010-blountstown",
+   "label": "Florida · Hurricane Warning, Panhandle (Oct 2018)",
+   "asof": "2018-10-10T09:00:00Z",
+   "region": "FL",
+   "hazard": "tropical",
+   "note": "Calhoun County offices in the Florida Panhandle (Central time). Decision time Wed Oct 10 2018 4:00 AM CDT, before the 08:00 opening, the realistic early-morning closure call.",
+   "facility_ids": [
+    "blountstown-service-center",
+    "calhoun-county-fsa"
+   ],
+   "verified_at": "2026-10-11T10:38:19Z"
+  },
+  {
+   "id": "fl-none-20190410-gainesville",
+   "label": "Florida · Quiet day, no warnings (Apr 2019)",
+   "asof": "2019-04-10T08:00:00Z",
+   "region": "FL",
+   "hazard": "none",
+   "note": "Control moment: nothing in force at these offices. Decision time Wed Apr 10 2019 4:00 AM EDT, before the 08:00 opening, the realistic early-morning closure call.",
+   "facility_ids": [
+    "florida-nrcs-state-office",
+    "ocala-service-center"
+   ],
+   "verified_at": "2026-10-11T10:38:33Z"
+  },
+  {
+   "id": "fl-tropical-20220927-fort-myers",
+   "label": "Florida · Storm Surge & Hurricane Warnings, Southwest Coast (Sep 2022)",
+   "asof": "2022-09-27T08:00:00Z",
+   "region": "FL",
+   "hazard": "tropical",
+   "note": "Fort Myers and Sarasota offices on the Gulf coast. Decision time Tue Sep 27 2022 4:00 AM EDT, before the 08:00 opening, the realistic early-morning closure call.",
+   "facility_ids": [
+    "fort-myers-service-center",
+    "lee-county-fsa",
+    "sarasota-service-center"
+   ],
+   "verified_at": "2026-10-11T10:38:20Z"
+  },
+  {
+   "id": "fl-tropical-20230829-trenton",
+   "label": "Florida · Hurricane Warning, Inland North Florida (Aug 2023)",
+   "asof": "2023-08-29T08:00:00Z",
+   "region": "FL",
+   "hazard": "tropical",
+   "note": "Trenton and Sumter County offices, away from the coast. Decision time Tue Aug 29 2023 4:00 AM EDT, before the 08:00 opening, the realistic early-morning closure call.",
+   "facility_ids": [
+    "trenton-service-center",
+    "sumter-county-fsa"
+   ],
+   "verified_at": "2026-10-11T10:38:22Z"
+  }
+ ]
+}
