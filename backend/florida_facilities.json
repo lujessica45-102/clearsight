@@ -1,0 +1,252 @@
+[
+ {
+  "id": "florida-nrcs-state-office",
+  "name": "Florida NRCS State Office",
+  "address": "4500 NW 27th Avenue, Building A, Gainesville, FL 32606",
+  "lat": 29.684,
+  "lon": -82.395,
+  "agency": "USDA NRCS",
+  "phone": "(352) 338-9500",
+  "countiesServed": "Florida statewide"
+ },
+ {
+  "id": "gainesville-service-center",
+  "name": "Gainesville Service Center",
+  "address": "5709 NW 13th Street, Gainesville, FL 32653",
+  "lat": 29.707,
+  "lon": -82.338,
+  "agency": "USDA NRCS",
+  "phone": "(352) 376-7414",
+  "countiesServed": "Alachua; Bradford"
+ },
+ {
+  "id": "alachua-county-fsa",
+  "name": "Alachua County FSA",
+  "address": "5709 NW 13th Street, Gainesville, FL 32653",
+  "lat": 29.707,
+  "lon": -82.338,
+  "agency": "USDA FSA",
+  "phone": "(352) 376-7414",
+  "countiesServed": "Alachua"
+ },
+ {
+  "id": "baldwin-service-center",
+  "name": "Baldwin Service Center",
+  "address": "260 US Highway 301 N, Baldwin, FL 32234",
+  "lat": 30.302,
+  "lon": -81.975,
+  "agency": "USDA NRCS",
+  "phone": "(904) 266-0088",
+  "countiesServed": "Baker; Duval; Nassau"
+ },
+ {
+  "id": "duval-county-fsa",
+  "name": "Duval County FSA",
+  "address": "260 US Highway 301 N, Baldwin, FL 32234",
+  "lat": 30.302,
+  "lon": -81.975,
+  "agency": "USDA FSA",
+  "phone": "(904) 266-0088 ext. 2",
+  "countiesServed": "Duval"
+ },
+ {
+  "id": "bonifay-service-center",
+  "name": "Bonifay Service Center",
+  "address": "103 N Oklahoma Street, Bonifay, FL 32425-2311",
+  "lat": 30.791,
+  "lon": -85.68,
+  "agency": "USDA NRCS",
+  "phone": "(850) 547-2850",
+  "countiesServed": "Bay; Holmes; Washington"
+ },
+ {
+  "id": "holmes-county-fsa",
+  "name": "Holmes County FSA",
+  "address": "103 N Oklahoma Street, Bonifay, FL 32425-2311",
+  "lat": 30.791,
+  "lon": -85.68,
+  "agency": "USDA FSA",
+  "phone": "(850) 547-2850 ext. 2",
+  "countiesServed": "Holmes"
+ },
+ {
+  "id": "cocoa-partnership-office",
+  "name": "Cocoa Partnership Office",
+  "address": "3695 Lake Drive, Cocoa, FL 32926-4219",
+  "lat": 28.386,
+  "lon": -80.742,
+  "agency": "USDA NRCS",
+  "phone": "(321) 745-6515",
+  "countiesServed": "Brevard"
+ },
+ {
+  "id": "osceola-brevard-county-fsa",
+  "name": "Osceola-Brevard County FSA",
+  "address": "1921 Kissimmee Valley Lane, Kissimmee, FL 34744",
+  "lat": 28.292,
+  "lon": -81.408,
+  "agency": "USDA FSA",
+  "phone": "(407) 847-4201",
+  "countiesServed": "Osceola; Brevard"
+ },
+ {
+  "id": "royal-palm-beach-center",
+  "name": "Royal Palm Beach Center",
+  "address": "420 S State Road 7, Royal Palm Beach, FL 33414",
+  "lat": 26.708,
+  "lon": -80.23,
+  "agency": "USDA NRCS",
+  "phone": "(561) 792-2727",
+  "countiesServed": "Broward; Palm Beach"
+ },
+ {
+  "id": "palm-beach-county-fsa",
+  "name": "Palm Beach County FSA",
+  "address": "420 S State Road 7, Royal Palm Beach, FL 33414",
+  "lat": 26.708,
+  "lon": -80.23,
+  "agency": "USDA FSA",
+  "phone": "(561) 792-2727",
+  "countiesServed": "Palm Beach"
+ },
+ {
+  "id": "blountstown-service-center",
+  "name": "Blountstown Service Center",
+  "address": "17413 NW Leonard Street, Blountstown, FL 32424",
+  "lat": 30.443,
+  "lon": -85.047,
+  "agency": "USDA NRCS",
+  "phone": "(850) 674-8271",
+  "countiesServed": "Calhoun; Franklin; Gulf; Liberty"
+ },
+ {
+  "id": "calhoun-county-fsa",
+  "name": "Calhoun County FSA",
+  "address": "17413 NW Leonard Street, Blountstown, FL 32424",
+  "lat": 30.443,
+  "lon": -85.047,
+  "agency": "USDA FSA",
+  "phone": "(850) 674-8388",
+  "countiesServed": "Calhoun"
+ },
+ {
+  "id": "sarasota-service-center",
+  "name": "Sarasota Service Center",
+  "address": "6942 Professional Parkway, Sarasota, FL 34240",
+  "lat": 27.385,
+  "lon": -82.45,
+  "agency": "USDA NRCS",
+  "phone": "(941) 907-0011",
+  "countiesServed": "Charlotte; Manatee; Sarasota"
+ },
+ {
+  "id": "fort-myers-service-center",
+  "name": "Fort Myers Service Center",
+  "address": "3434 Hancock Bridge Parkway, Fort Myers, FL 33903",
+  "lat": 26.672,
+  "lon": -81.903,
+  "agency": "USDA NRCS",
+  "phone": "(239) 997-7331",
+  "countiesServed": "Collier; Lee"
+ },
+ {
+  "id": "lee-county-fsa",
+  "name": "Lee County FSA",
+  "address": "3434 Hancock Bridge Parkway, Fort Myers, FL 33903",
+  "lat": 26.672,
+  "lon": -81.903,
+  "agency": "USDA FSA",
+  "phone": "(239) 997-7331",
+  "countiesServed": "Lee"
+ },
+ {
+  "id": "ocala-service-center",
+  "name": "Ocala Service Center",
+  "address": "2441 NE 3rd Street, Suite 204-2, Ocala, FL 34470",
+  "lat": 29.189,
+  "lon": -82.11,
+  "agency": "USDA NRCS",
+  "phone": "(352) 732-7534",
+  "countiesServed": "Citrus; Marion"
+ },
+ {
+  "id": "sumter-county-fsa",
+  "name": "Sumter County FSA",
+  "address": "7620 State Road 471, Suite 3, Bushnell, FL 33513",
+  "lat": 28.665,
+  "lon": -82.113,
+  "agency": "USDA FSA",
+  "phone": "(352) 793-2651",
+  "countiesServed": "Sumter"
+ },
+ {
+  "id": "east-palatka-service-center",
+  "name": "East Palatka Service Center",
+  "address": "111 Yelvington Road, East Palatka, FL 32131",
+  "lat": 29.655,
+  "lon": -81.597,
+  "agency": "USDA NRCS",
+  "phone": "(386) 328-5051",
+  "countiesServed": "Clay; Putnam; St. Johns"
+ },
+ {
+  "id": "lake-city-service-center",
+  "name": "Lake City Service Center",
+  "address": "2304 SW Main Boulevard, Lake City, FL 32025",
+  "lat": 30.17,
+  "lon": -82.64,
+  "agency": "USDA NRCS",
+  "phone": "(386) 752-8447",
+  "countiesServed": "Columbia"
+ },
+ {
+  "id": "wauchula-service-center",
+  "name": "Wauchula Service Center",
+  "address": "316 North 7th Avenue, Wauchula, FL 33873",
+  "lat": 27.547,
+  "lon": -81.811,
+  "agency": "USDA NRCS",
+  "phone": "(863) 773-4764",
+  "countiesServed": "De Soto; Hardee"
+ },
+ {
+  "id": "trenton-service-center",
+  "name": "Trenton Service Center",
+  "address": "1727 East Wade Street, Trenton, FL 32693",
+  "lat": 29.613,
+  "lon": -82.817,
+  "agency": "USDA NRCS",
+  "phone": "(352) 658-4059",
+  "countiesServed": "Dixie; Levy; Gilchrist"
+ },
+ {
+  "id": "molino-service-center",
+  "name": "Molino Service Center",
+  "address": "151 Highway 97, Molino, FL 32577-5553",
+  "lat": 30.723,
+  "lon": -87.316,
+  "agency": "USDA NRCS",
+  "phone": "(850) 587-5404",
+  "countiesServed": "Escambia"
+ },
+ {
+  "id": "santa-rosa-county-fsa",
+  "name": "Santa Rosa County FSA",
+  "address": "3927 Highway 4, Jay, FL 32565-1752",
+  "lat": 30.954,
+  "lon": -87.151,
+  "agency": "USDA FSA",
+  "phone": "(850) 675-6696",
+  "countiesServed": "Santa Rosa"
+ },
+ {
+  "id": "deland-service-center",
+  "name": "DeLand Service Center",
+  "address": "101 Heavensgate Road, Suite F, DeLand, FL 32720",
+  "lat": 29.028,
+  "lon": -81.303,
+  "agency": "USDA NRCS",
+  "phone": "(386) 985-4037 ext. 3",
+  "countiesServed": "Flagler; Volusia"
+ }
+]

@@ -324,3 +324,6 @@ input[type=checkbox]{accent-color:var(--brand)}
 .fmenu-item-alert.has{color:#9b2320}
 .fmenu-empty{padding:10px}
 .calm-box{border-left:4px solid #0ca30c!important}
+
+.tag.risk{border-color:#d03b3b;color:#d03b3b;margin-left:6px}
+.person .tag{margin-left:6px}

@@ -1,4 +1,8 @@
 import { SCENARIO, FLORIDA_FACILITIES } from "./floridaFacilities.js";
+import { applyEngine } from "./engineAdapter.js";
+
+// Each office + the decision engine's saved results for it (if it was evaluated)
+const ENGINE = FLORIDA_FACILITIES.map(applyEngine);
 
 export const API = "http://172.236.108.63";
 
@@ -46,8 +50,8 @@ export const MOCK = {
     source: "National Weather Service (archived)",
     polygon: null,
   },
-  facilities: FLORIDA_FACILITIES,
-  employees: [],
+  facilities: ENGINE.map(x => x.fac),
+  employees: ENGINE.flatMap(x => x.employees),
 };
 
 // Live data from the backend; falls back to sample data if it's not ready

@@ -60,6 +60,39 @@ function DecisionPath({ path, decision, sevColor }) {
   );
 }
 
+// The team's rule engine (closure/engine.py): every rule, what it measured, and whether it fired
+function EngineRules({ rules, labels, decision, sevColor }) {
+  const shown = v => (v === null || v === undefined ? "n/a" : v);
+  return (
+    <ol className="dpath">
+      {rules.map((r, i) => (
+        <li className="dstep" key={r.id}>
+          <div className="dstep-rail"><span className="dstep-num">{r.id}</span></div>
+          <div className="dstep-card">
+            <div className="dstep-head">
+              <p className="dstep-q">{r.name}?</p>
+              <span className={`ans ${r.fired ? "yes" : "no"}`}>{r.fired === null ? "Not checked" : r.fired ? "Yes" : "No"}</span>
+            </div>
+            <p className="dstep-found"><span className="found-label">Found:</span> {r.metric}: <strong>{shown(r.value)}</strong>{r.threshold !== null && <> (threshold {r.comparator} {r.threshold})</>}</p>
+            <p className="dstep-src">Basis: {r.basis}</p>
+          </div>
+          <div className="dstep-alt" aria-label="What this rule leads to">
+            <span className="alt-line" aria-hidden="true" />
+            <span>{r.posture_if_fired ? <>If it fires: <strong>{labels[r.posture_if_fired]}</strong></> : "Informational only"}</span>
+          </div>
+        </li>
+      ))}
+      <li className="dstep dstep-end">
+        <div className="dstep-rail"><span className="dstep-num end" style={{ background: sevColor }}>✓</span></div>
+        <div className="dstep-card result" style={{ "--sev": sevColor }}>
+          <p className="found-label">Recommendation</p>
+          <p className="dresult serif">{decision}</p>
+        </div>
+      </li>
+    </ol>
+  );
+}
+
 function Checked({ path, checkedAt, confidence }) {
   return (
     <div className="checked">
@@ -143,7 +176,7 @@ export default function SecondOpinion() {
         </section>
 
         <section className="col">
-          <h2 className="label">Relevant sectors</h2>
+          <h2 className="label">{op.sectorsLabel || "Relevant sectors"}</h2>
           <div className="sector-grid">
             {op.sectors.map((s, i) => (
               <article className="sector" key={i}>
@@ -156,21 +189,30 @@ export default function SecondOpinion() {
               </article>
             ))}
           </div>
-          <p className="footnote">Numbered by chain of command: 01 is the highest level.</p>
+          <p className="footnote">{op.sectorsNote || "Numbered by chain of command: 01 is the highest level."}</p>
         </section>
       </div>
 
       {why && (
         <section className="box how" id="how">
           <h2 className="label">How the agent reached this decision</h2>
-          <p className="muted how-intro">The agent follows the same yes/no rules every time. Here is the exact path it took, what it found at each step, and what would have happened if the answer had been different.</p>
+          <p className="muted how-intro">{why.rules
+            ? "The rule engine checks the same rules every time. Here is each rule, what it measured, and what it would lead to. The highest rule that fires sets the recommendation."
+            : "The agent follows the same yes/no rules every time. Here is the exact path it took, what it found at each step, and what would have happened if the answer had been different."}</p>
 
-          <DecisionPath path={why.path} decision={op.decision} sevColor={(SEVERITY[op.severity] || SEVERITY.yellow).color} />
+          {why.rules
+            ? <EngineRules rules={why.rules} labels={why.labels} decision={op.decision} sevColor={(SEVERITY[op.severity] || SEVERITY.yellow).color} />
+            : <DecisionPath path={why.path} decision={op.decision} sevColor={(SEVERITY[op.severity] || SEVERITY.yellow).color} />}
 
           <div className="how-bottom">
             <div>
-              <h3 className="label">The morning, hour by hour</h3>
-              <Timeline rows={why.timeline} />
+              {why.timeline ? <>
+                <h3 className="label">The morning, hour by hour</h3>
+                <Timeline rows={why.timeline} />
+              </> : <>
+                <h3 className="label">What would change this call</h3>
+                <ul className="list">{why.wouldChange.map((w, i) => <li key={i}>{w}</li>)}</ul>
+              </>}
             </div>
             <div className="rule">
               <h3 className="label">The rule we applied</h3>
@@ -178,6 +220,7 @@ export default function SecondOpinion() {
               <p className="muted small">Based on: {why.ruleSource}</p>
               <h3 className="label" style={{ marginTop: 18 }}>In plain words</h3>
               <p className="prose small-prose">{op.explanation}</p>
+              {why.record && <p className="footnote">Decision record {why.record.id} · SHA-256 {why.record.sha?.slice(0, 12)}… · log {why.record.verified ? "verified, untampered" : "NOT verified"}</p>}
             </div>
           </div>
         </section>

@@ -6,7 +6,8 @@ import { Waiting } from "./SecondOpinion.jsx";
 
 export default function Email() {
   const { facility, employees } = useData();
-  const affected = useMemo(() => employees.filter(e => e.affected), [employees]);
+  // Email the affected employees; if nobody is affected (office open as normal), list everyone
+  const affected = useMemo(() => (employees.some(e => e.affected) ? employees.filter(e => e.affected) : employees), [employees]);
   const [picked, setPicked] = useState(new Set());
   const [copied, setCopied] = useState(false);
 
@@ -63,18 +64,20 @@ export default function Email() {
                 <tr key={e.id} className={picked.has(e.id) ? "" : "off"}>
                   <td><input type="checkbox" checked={picked.has(e.id)} onChange={() => toggle(e.id)} aria-label={`Include ${e.name}`} /></td>
                   <td>
-                    <div className="person">{e.name}{e.essential && <span className="tag">Essential</span>}</div>
-                    <div className="muted small">{e.role} · {e.email}</div>
+                    <div className="person">{e.name}{e.essential && <span className="tag">Essential</span>}{e.risk === "high" && <span className="tag risk">High-risk commute</span>}</div>
+                    <div className="muted small">{e.role}{e.email.endsWith(".invalid") ? "" : ` · ${e.email}`}</div>
                   </td>
-                  <td>{instructionFor(e, facility)}</td>
+                  <td>{e.instruction || instructionFor(e, facility)}</td>
                 </tr>
               ))}
             </tbody>
           </table>
           <p className="footnote">
-            {employees.length - affected.length} unaffected employee{employees.length - affected.length === 1 ? "" : "s"} not listed.
+            {employees.length - affected.length} unaffected employee{employees.length - affected.length === 1 ? "" : "s"} not listed. Employees are synthetic demo data.
             Each decision is saved to the <a href={`${API}/vault`} target="_blank" rel="noreferrer">evidence vault on Akamai</a>.
           </p>
+          {facility.email.channels && <p className="footnote"><strong>How to send:</strong> {facility.email.channels}</p>}
+          {facility.email.source && <p className="footnote">{facility.email.source} Draft only: nothing is sent until you press the button.</p>}
         </section>
       </div>
 
