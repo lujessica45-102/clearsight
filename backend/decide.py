@@ -36,9 +36,9 @@ from closure.sectors import POSTURE_LABELS                               # noqa:
 
 
 # ---------- adapter: Jessica's office record -> the facility format the engine expects ----------
-def to_engine_facility(o, emps):
+def to_engine_facility(o, emps, sector="service_center"):
     return {
-        "id": o["id"], "name": o["name"], "sector": "service_center",       # NRCS/FSA offices are service centers
+        "id": o["id"], "name": o["name"], "sector": sector,       # NRCS/FSA offices are service centers
         "latitude": o["lat"], "longitude": o["lon"],
         "timezone": "America/Chicago" if o["lon"] <= -85.0 else "America/New_York",   # Panhandle west of the Apalachicola is Central
         "opening_time": "08:00", "closing_time": "16:30", "state": "FL",
@@ -49,12 +49,12 @@ def to_engine_facility(o, emps):
     }
 
 
-def synthetic_employees(o):
+def synthetic_employees(o, sector="service_center"):
     """Made-up staff, generated the same way as closure/synthetic.py (fixed seed, her role and rate tables)."""
     rng = random.Random(f"clearsight-{o['id']}")
     n = rng.randint(12, 22)
     town = o["address"].split(",")[-2].strip()
-    ess, tw = synthetic._ESSENTIAL_RATE["service_center"], synthetic._TELEWORK_RATE["service_center"]
+    ess, tw = synthetic._ESSENTIAL_RATE[sector], synthetic._TELEWORK_RATE[sector]
     out = []
     for i in range(n):
         spread_km = rng.choice([4, 8, 15, 25])                              # rural commutes: some local, some long
@@ -67,7 +67,7 @@ def synthetic_employees(o):
             "id": f"{o['id']}-{i + 1:03d}", "facility_id": o["id"],
             "home_community": town if spread_km <= 4 else f"{side} of {town}",
             "home_lat": round(lat, 5), "home_lon": round(lon, 5),
-            "role_category": rng.choice(synthetic._ROLES["service_center"]),
+            "role_category": rng.choice(synthetic._ROLES[sector]),
             "essential": essential, "telework_eligible": (not essential) and rng.random() < tw / (1 - ess),
             "accessibility_need": rng.random() < 0.06,
         })

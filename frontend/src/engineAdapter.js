@@ -1,6 +1,7 @@
 // Turns the saved output of the team's decision engine (closure/, run by backend/decide.py)
 // into the shapes the Overview, Second opinion and Email pages already display.
 import DECISIONS from "./decisions.json";
+import SECTOR_VIEWS from "./sectorDecisions.json";
 
 const STATUS_OF = { closure: "closed", telework: "telework", delayed_arrival: "delay", early_dismissal: "delay", normal: "normal" };
 const SEV_OF = { closure: "red", telework: "yellow", delayed_arrival: "yellow", early_dismissal: "yellow", normal: "green" };
@@ -26,29 +27,44 @@ export function applyEngine(fac) {
   const affectedN = m.high_commute_risk + m.elevated_commute_risk;
   const binding = det.rules.find(r => r.id === det.binding_rule);
 
-  const sectors = [
-    { name: "Rule engine", role: "Fixed thresholds, same every time",
-      decision: det.posture_label, severity: SEV_OF[det.posture],
-      bullets: [binding ? `Rule ${binding.id} fired: ${binding.name}` : "No rule fired", `Confidence: ${det.confidence.level}`, ...det.immediate_actions.slice(0, 1)] },
-    op2 && { name: "AI second opinion", role: `Decision agent · ${so.model?.decision_and_comms || "Bedrock"}`,
-      decision: `${op2.verdict.replaceAll("_", " ")}: ${labels[op2.recommended_posture]}`, severity: SEV_OF[op2.recommended_posture],
-      bullets: op2.key_factors.slice(0, 3) },
-    so?.hazard_assessment && { name: "Hazard check", role: "Hazard intelligence agent",
-      decision: so.hazard_assessment.immediate_life_safety_threat ? "Immediate life-safety threat" : "No immediate life-safety threat",
-      severity: so.hazard_assessment.immediate_life_safety_threat ? "red" : "yellow",
-      bullets: [so.hazard_assessment.summary, ...so.hazard_assessment.data_gaps.slice(0, 1)] },
-    { name: "Employee impact", role: so?.employee_impact ? "Employee impact agent" : "Commute exposure analysis",
-      decision: `${affectedN} of ${m.workforce} employees affected`, severity: m.high_pct >= 40 ? "red" : affectedN ? "yellow" : "green",
-      bullets: so?.employee_impact ? [so.employee_impact.headline, so.employee_impact.telework_assessment]
-        : [`${m.high_commute_risk} high-risk and ${m.elevated_commute_risk} elevated-risk commutes`, d.impact_note] },
-  ].filter(Boolean);
+  // Four USDA sectors (closure/sectors.py), chain of command order: her engine run once per sector on this storm
+  const SECTOR_ROLE = {
+    headquarters: "e.g. mission-area HQ · runs continuity of operations",
+    research_lab: "e.g. Agricultural Research Service station",
+    field_office: "e.g. APHIS / Forest Service field crews",
+    service_center: "e.g. FSA / NRCS county office",
+  };
+  const SECTOR_SHORT = {
+    headquarters: { normal: "Open as normal", delayed_arrival: "Late arrival, telework option", telework: "Mandatory telework, COOP on standby", early_dismissal: "Release early, finish from home", closure: "Building closed, COOP via telework" },
+    research_lab: { normal: "Open; check backup power", delayed_arrival: "Late arrival; care staff keep shift", telework: "Telework; animal/plant care roster on site", early_dismissal: "Finish critical care, then release", closure: "Closed; essential-care crew only" },
+    field_office: { normal: "Open; review field assignments", delayed_arrival: "Hold all field deployments", telework: "Stand down field work", early_dismissal: "Recall field crews now", closure: "Stand down all field operations" },
+    service_center: { normal: "Open; lobby on alert", delayed_arrival: "Open late; reschedule appointments", telework: "Lobby closed; phones and online only", early_dismissal: "Close lobby, release in waves", closure: "Closed to the public" },
+  };
+  const ruleWhy = v => {
+    const b = v.binding;
+    if (!b) return "No warning covers the office and no staff commute is exposed.";
+    if (b.id === "R1") return "A life-threatening warning (Hurricane Warning class, level 5 of 5) covers the office itself.";
+    if (b.id === "R2") return "A serious warning covers the office during working hours.";
+    if (b.id === "R3") return `${v.high_pct}% of staff have a dangerous commute; this sector closes at ${v.params.closure_exposed_pct}%.`;
+    if (b.id === "R4") return `${v.high_pct}% of staff have a risky commute; this sector moves to telework at ${v.params.telework_exposed_pct}%.`;
+    if (b.id === "R5") return `Risky commutes clear within 4 hours; this sector delays at ${v.params.delay_exposed_pct}%.`;
+    return `${b.name}.`;
+  };
+  const sectors = (SECTOR_VIEWS[fac.id] || []).map(v => ({
+    name: v.label, role: SECTOR_ROLE[v.sector],
+    decision: SECTOR_SHORT[v.sector][v.posture], severity: SEV_OF[v.posture],
+    bullets: [
+      ruleWhy(v),
+      v.notes?.length ? "Most affected staff can telework, so the sector keeps working remotely instead of closing." : v.rationale,
+      `What to do: ${v.action}`,
+      `${v.essential} of ${v.workforce} staff essential · ${v.telework} can telework`,
+    ],
+  }));
 
   const opinion = {
     decision: labels[posture], severity: SEV_OF[posture],
     explanation: op2?.reasoning || det.justification,
-    sectors, sectorsLabel: "Who weighed in",
-    sectorsNote: so ? "The rule engine sets a safety floor; the AI agents can raise the call but cannot quietly lower it."
-                    : "AI second opinion not generated yet. Run python -m backend.decide with the AWS key.",
+    sectors,
   };
 
   const reasoning = {
@@ -61,11 +77,20 @@ export function applyEngine(fac) {
       { id: "roads", source: d.roads.status === "ok" ? "Road closures" : "Road closures: not available in the archive" },
       ...(so ? [{ id: "ai", source: "3 AI agents (hazard, impact, decision)" }] : []),
     ],
-    rules: det.rules, labels,
+    rules: det.rules, labels, binding: det.binding_rule, metrics: m,
     rule: binding ? `${binding.id}: ${binding.name}` : "No threshold crossed",
     ruleSource: binding ? binding.basis : "All rule thresholds are prototype assumptions, not official USDA/OPM policy.",
     whyThreshold: binding?.why_this_threshold,
-    wouldChange: op2?.what_would_change?.length ? op2.what_would_change : det.sensitivity.map(s => `${s.change} → ${labels[s.would_recommend] || s.would_recommend}`),
+    wouldChange: det.sensitivity.map(sv => {
+      const c = sv.change, n = (c.match(/^(\d+) more/) || [])[1];
+      const then = { normal: "Open as normal", delayed_arrival: "Delayed arrival", early_dismissal: "Early dismissal", telework: "Telework / leave", closure: "Full closure" }[sv.would_recommend];
+      if (n) return { if: `${n} more staff get a dangerous commute`, then, up: true };
+      if (/cancelled, downgraded or expires/.test(c)) return { if: "The warning is cancelled or ends before opening", then: "A lower response", up: false };
+      if (/road closures/i.test(c)) return { if: "Road closures are confirmed on commute routes", then: "Possibly stricter", up: true };
+      if (/Warning-level alert/.test(c)) return { if: "A warning is issued for the office area", then: "Early dismissal, telework or closure", up: true };
+      return { if: c, then: then || sv.would_recommend, up: true };
+    }),
+    aiWouldChange: op2?.what_would_change || [],
     alternatives: det.alternatives_considered,
     record: { id: d.evaluation_id, sha: d.record?.sha256, verified: DECISIONS.chain_verified },
   };

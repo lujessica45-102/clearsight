@@ -138,6 +138,21 @@ async def set_current(request: Request, x_evidence_token: str = Header(default="
     return {"ok": True, "evidence_ids": ids}
 
 
+# ---------- Decision history (Akamai Object Storage, written by backend/history.py --upload) ----------
+_history = {"data": None, "at": 0}
+
+
+@app.get("/api/history")
+def history():
+    if not _history["data"] or time.time() - _history["at"] > 300:
+        try:
+            obj = evidence._s3.get_object(Bucket=evidence._BUCKET, Key="history/index.json")
+            _history.update(data=json.loads(obj["Body"].read()), at=time.time())
+        except Exception as e:
+            raise HTTPException(503, f"History not in the bucket yet: {type(e).__name__}")
+    return {**_history["data"], "served_from": "Akamai Object Storage via Linode"}
+
+
 # ---------- Pages ----------
 @app.get("/vault", response_class=HTMLResponse)
 def vault():
