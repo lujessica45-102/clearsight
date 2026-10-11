@@ -1,0 +1,33 @@
+<!doctype html><html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Decision Evidence</title><style>
+body{font-family:system-ui,sans-serif;max-width:900px;margin:24px auto;padding:0 16px;background:#f6f7f9;color:#1b1f24}
+input,button{font-size:16px;padding:8px 10px}ul{padding:0;list-style:none}
+li a{display:block;padding:8px;background:#fff;margin:4px 0;border-radius:6px;text-decoration:none;color:#0b57d0}
+.ok{background:#d7f5dd;color:#0a6b23}.bad{background:#fde0e0;color:#a10e0e}
+.badge{display:inline-block;padding:4px 10px;border-radius:12px;font-weight:600}
+pre{background:#fff;padding:12px;border-radius:6px;white-space:pre-wrap}
+</style></head><body>
+<h1>Decision Evidence</h1>
+<p>Stored privately in Akamai Object Storage. Each record is fingerprinted (SHA-256) when saved.</p>
+<input id="fac" value="ia-story-sc"> <button onclick="loadList()">Show decisions</button>
+<ul id="list"></ul><div id="detail"></div>
+<script>
+async function loadList(){
+  const f=document.getElementById('fac').value.trim();
+  const d=await (await fetch('/evidence?facility_id='+encodeURIComponent(f))).json();
+  const ul=document.getElementById('list'); ul.innerHTML='';
+  if(!d.evidence_ids.length){ul.textContent='No decisions saved yet.';return;}
+  d.evidence_ids.forEach(id=>{const li=document.createElement('li'),a=document.createElement('a');
+    a.href='#';a.textContent=id;a.onclick=e=>{e.preventDefault();show(id)};li.appendChild(a);ul.appendChild(li);});
+}
+async function show(id){
+  const e=await (await fetch('/evidence/'+id)).json(); const box=document.getElementById('detail'); box.innerHTML='';
+  const b=document.createElement('span'); b.className='badge '+(e.integrity_ok?'ok':'bad');
+  b.textContent=e.integrity_ok?'Untampered: fingerprint matches':'WARNING: record changed after saving';
+  const h=document.createElement('h3'); h.textContent=id;
+  const m=document.createElement('p'); m.textContent='Saved at '+e.saved_at+' | SHA-256 '+e.sha256;
+  const pre=document.createElement('pre'); pre.textContent=JSON.stringify(e.record,null,2);
+  box.append(h,b,m,pre);
+}
+loadList();
+</script></body></html>
