@@ -25,7 +25,7 @@ CENSUS_GEOCODER_URL = (
 
 DEFAULT_DATABASE_PATH = os.getenv(
     "FACILITIES_DATABASE",
-    "facilities.db",
+    "/parser/facilities.db",
 )
 
 OPERATING_STATUSES = {
